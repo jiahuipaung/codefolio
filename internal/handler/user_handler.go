@@ -2,6 +2,7 @@ package handler
 
 import (
 	"codefolio/internal/domain"
+	"codefolio/internal/util"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -29,14 +30,17 @@ type LoginRequest struct {
 
 func (h *UserHandler) Register(c *gin.Context) {
 	var req RegisterRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		ResponseWithError(c, http.StatusBadRequest, INVALID_PARAMS, err.Error())
+	if !util.BindAndValidate(c, &req) {
 		return
 	}
 
 	user, err := h.userService.Register(req.Email, req.Password, req.FirstName, req.LastName)
 	if err != nil {
-		ResponseWithError(c, http.StatusBadRequest, ERROR, err.Error())
+		if err.Error() == "email already exists" {
+			ResponseWithError(c, http.StatusBadRequest, USER_ALREADY_EXISTS, "")
+			return
+		}
+		ResponseWithError(c, http.StatusInternalServerError, SERVER_ERROR, err.Error())
 		return
 	}
 
@@ -45,14 +49,13 @@ func (h *UserHandler) Register(c *gin.Context) {
 
 func (h *UserHandler) Login(c *gin.Context) {
 	var req LoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		ResponseWithError(c, http.StatusBadRequest, INVALID_PARAMS, err.Error())
+	if !util.BindAndValidate(c, &req) {
 		return
 	}
 
 	token, err := h.userService.Login(req.Email, req.Password)
 	if err != nil {
-		ResponseWithError(c, http.StatusUnauthorized, UNAUTHORIZED, "无效的凭据")
+		ResponseWithError(c, http.StatusUnauthorized, INVALID_CREDENTIALS, "")
 		return
 	}
 
@@ -68,7 +71,7 @@ func (h *UserHandler) GetMe(c *gin.Context) {
 
 	user, err := h.userService.GetUserByID(userID.(uint))
 	if err != nil {
-		ResponseWithError(c, http.StatusNotFound, NOT_FOUND, "用户不存在")
+		ResponseWithError(c, http.StatusNotFound, USER_NOT_FOUND, "")
 		return
 	}
 
