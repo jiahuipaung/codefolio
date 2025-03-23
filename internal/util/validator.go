@@ -1,7 +1,9 @@
 package util
 
 import (
-	"codefolio/internal/handler"
+	"codefolio/internal/common"
+	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -10,57 +12,59 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-// 自定义验证错误信息
+// 自定义验证错误消息映射
 var validationErrorMessages = map[string]string{
-	"required": "该字段是必填项",
-	"email":    "请输入有效的电子邮件地址",
-	"min":      "该字段长度不足",
-	"max":      "该字段长度超出限制",
-	"alphanum": "该字段只能包含字母和数字",
-	"numeric":  "该字段只能包含数字",
-	"eqfield":  "两个字段必须匹配",
+	"required": "必须填写",
+	"email":    "必须是有效的电子邮件地址",
+	"min":      "长度不能小于 %s",
+	"max":      "长度不能大于 %s",
+	"len":      "长度必须是 %s",
+	"eq":       "必须等于 %s",
+	"ne":       "不能等于 %s",
+	"gt":       "必须大于 %s",
+	"gte":      "必须大于等于 %s",
+	"lt":       "必须小于 %s",
+	"lte":      "必须小于等于 %s",
 }
 
 // BindAndValidate 绑定并验证请求参数
-func BindAndValidate(c *gin.Context, obj interface{}) bool {
+// 返回错误，如果有错误则在函数内部已经处理了HTTP响应
+func BindAndValidate(c *gin.Context, obj interface{}) error {
+	// 绑定请求参数
 	if err := c.ShouldBindJSON(obj); err != nil {
-		// 处理验证错误
-		if validationErrors, ok := err.(validator.ValidationErrors); ok {
-			errorMessages := formatValidationErrors(validationErrors)
-			handler.ResponseWithError(c, http.StatusBadRequest, handler.INVALID_PARAMS, strings.Join(errorMessages, "; "))
-		} else {
-			// 其他绑定错误
-			handler.ResponseWithError(c, http.StatusBadRequest, handler.INVALID_PARAMS, "无效的请求参数格式")
+		var validationErrors validator.ValidationErrors
+		if errors.As(err, &validationErrors) {
+			// 处理验证错误
+			fieldErrors := formatValidationErrors(validationErrors)
+			common.ResponseWithError(c, common.CodeInvalidParams, http.StatusBadRequest)
+			return err
 		}
-		return false
+		// 其他绑定错误
+		common.ResponseWithError(c, common.CodeBadRequest, http.StatusBadRequest)
+		return err
 	}
-	return true
+	return nil
 }
 
 // formatValidationErrors 格式化验证错误
-func formatValidationErrors(errors validator.ValidationErrors) []string {
-	var result []string
+func formatValidationErrors(errors validator.ValidationErrors) map[string]string {
+	errorMap := make(map[string]string)
 
 	for _, err := range errors {
-		field := toSnakeCase(err.Field())
+		field := strings.ToLower(err.Field())
 		tag := err.Tag()
 
-		// 查找自定义错误消息
-		message, exists := validationErrorMessages[tag]
-		if !exists {
-			message = "验证失败"
+		message, ok := validationErrorMessages[tag]
+		if !ok {
+			message = fmt.Sprintf("验证失败: %s", tag)
+		} else if strings.Contains(message, "%s") {
+			message = fmt.Sprintf(message, err.Param())
 		}
 
-		// 对特定标签添加额外信息
-		switch tag {
-		case "min", "max":
-			message = message + " (" + err.Param() + ")"
-		}
-
-		result = append(result, field+": "+message)
+		errorMap[field] = message
 	}
 
-	return result
+	return errorMap
 }
 
 // toSnakeCase 转换为蛇形命名

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"codefolio/internal/common"
 	"codefolio/internal/config"
 	"codefolio/internal/domain"
 	"codefolio/internal/handler"
@@ -61,7 +62,7 @@ func main() {
 
 	// 健康检查路由
 	r.GET("/health", func(c *gin.Context) {
-		handler.ResponseWithData(c, gin.H{
+		common.ResponseWithData(c, gin.H{
 			"status":      "ok",
 			"version":     cfg.Server.Version,
 			"environment": cfg.Server.Environment,

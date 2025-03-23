@@ -1,7 +1,9 @@
 package util
 
 import (
+	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -9,81 +11,98 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-var Logger *zap.Logger
+var logger *zap.Logger
 
-// InitLogger 初始化日志
+// InitLogger 初始化日志记录器
 func InitLogger(env string) *zap.Logger {
-	var config zap.Config
+	// 创建日志目录
+	logDir := "logs"
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		panic("无法创建日志目录: " + err.Error())
+	}
 
+	// 设置日志配置
+	var config zap.Config
 	if env == "production" {
-		// 生产环境: 使用JSON格式，写入到文件
+		// 生产环境: JSON格式，写入文件
 		config = zap.NewProductionConfig()
-		config.OutputPaths = []string{"logs/app.log", "stdout"}
-		config.ErrorOutputPaths = []string{"logs/error.log", "stderr"}
+		config.OutputPaths = []string{
+			"stdout",
+			filepath.Join(logDir, "app.log"),
+		}
+		config.ErrorOutputPaths = []string{
+			"stderr",
+			filepath.Join(logDir, "error.log"),
+		}
 	} else {
-		// 开发环境: 彩色控制台输出
+		// 开发环境: 彩色输出到控制台
 		config = zap.NewDevelopmentConfig()
 		config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	}
 
-	// 公共配置
-	config.EncoderConfig.TimeKey = "time"
-	config.EncoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout(time.RFC3339)
-
-	// 创建日志目录
-	if env == "production" {
-		os.MkdirAll("logs", 0755)
-	}
-
-	// 构建日志
-	logger, err := config.Build()
+	// 构建日志记录器
+	var err error
+	logger, err = config.Build()
 	if err != nil {
-		panic("Failed to initialize logger: " + err.Error())
+		panic("初始化日志记录器失败: " + err.Error())
 	}
 
-	// 替换全局日志
-	zap.ReplaceGlobals(logger)
-
-	// 存储日志实例
-	Logger = logger
+	logger.Info("日志系统已初始化",
+		zap.String("environment", env),
+		zap.String("logDir", logDir),
+	)
 
 	return logger
 }
 
-// LoggerMiddleware Gin日志中间件
+// GetLogger 获取全局日志记录器
+func GetLogger() *zap.Logger {
+	if logger == nil {
+		// 如果日志记录器未初始化，使用默认配置
+		logger, _ = zap.NewProduction()
+	}
+	return logger
+}
+
+// LoggerMiddleware 日志中间件
 func LoggerMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 开始时间
 		start := time.Now()
 		path := c.Request.URL.Path
-		method := c.Request.Method
-		ip := c.ClientIP()
+		query := c.Request.URL.RawQuery
 
 		// 处理请求
 		c.Next()
 
-		// 请求处理完成，记录信息
-		latency := time.Since(start)
+		// 结束时间
+		end := time.Now()
+		latency := end.Sub(start)
+
+		// 获取状态码和错误信息
 		status := c.Writer.Status()
+		clientIP := c.ClientIP()
+		method := c.Request.Method
 
-		// 确定日志级别
-		var logFunc func(string, ...zap.Field)
-		if status >= 500 {
-			logFunc = Logger.Error
-		} else if status >= 400 {
-			logFunc = Logger.Warn
-		} else {
-			logFunc = Logger.Info
-		}
-
-		// 记录请求日志
-		logFunc("HTTP Request",
+		// 构建日志字段
+		fields := []zapcore.Field{
+			zap.Int("status", status),
 			zap.String("method", method),
 			zap.String("path", path),
-			zap.Int("status", status),
+			zap.String("query", query),
+			zap.String("ip", clientIP),
 			zap.Duration("latency", latency),
-			zap.String("ip", ip),
-			zap.Int("size", c.Writer.Size()),
 			zap.String("user-agent", c.Request.UserAgent()),
-		)
+		}
+
+		// 根据状态码记录不同级别的日志
+		switch {
+		case status >= http.StatusInternalServerError:
+			GetLogger().Error("服务器错误", fields...)
+		case status >= http.StatusBadRequest:
+			GetLogger().Warn("客户端错误", fields...)
+		default:
+			GetLogger().Info("请求完成", fields...)
+		}
 	}
 }

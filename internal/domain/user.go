@@ -6,15 +6,14 @@ import (
 	"gorm.io/gorm"
 )
 
+// User 用户模型
 type User struct {
-	gorm.Model
-	Email         string    `gorm:"uniqueIndex;not null" json:"email"`
-	Password      string    `gorm:"not null" json:"-"`
-	FirstName     string    `json:"first_name"`
-	LastName      string    `json:"last_name"`
-	LastLoginAt   time.Time `json:"last_login_at"`
-	IsActive      bool      `gorm:"default:true" json:"is_active"`
-	EmailVerified bool      `gorm:"default:false" json:"email_verified"`
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	Username  string    `json:"username" gorm:"size:50;not null;unique"`
+	Email     string    `json:"email" gorm:"size:100;not null;unique"`
+	Password  string    `json:"-" gorm:"size:100;not null"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type UserRepository interface {
