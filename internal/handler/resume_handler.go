@@ -2,6 +2,7 @@ package handler
 
 import (
 	"codefolio/internal/common"
+	"codefolio/internal/domain"
 	"codefolio/internal/service"
 	"codefolio/internal/util"
 	"net/http"
@@ -112,7 +113,7 @@ func getCurrentUserID(c *gin.Context) uint {
 }
 
 // convertToResumeResponse 转换为简历响应
-func (h *ResumeHandler) convertToResumeResponse(c *gin.Context, resume *service.Resume) ResumeResponse {
+func (h *ResumeHandler) convertToResumeResponse(c *gin.Context, resume *domain.Resume) ResumeResponse {
 	// 分离技术栈标签和方向标签
 	var tags []TagResponse
 	var directions []TagResponse

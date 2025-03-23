@@ -6,9 +6,10 @@ import (
 	"codefolio/internal/repository"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -32,6 +33,7 @@ type UserService interface {
 	Register(username, password, email string) (*domain.User, error)
 	Login(username, password string) (string, error)
 	GetUserByID(id uint) (*domain.User, error)
+	UpdateUser(user *domain.User) error
 }
 
 // userService 用户服务实现
@@ -157,4 +159,28 @@ func (s *userService) generateToken(userID uint) (string, error) {
 
 func (s *userService) UpdateUser(user *domain.User) error {
 	return s.userRepo.Update(user)
+}
+
+// ExtractUserIDFromToken 从JWT Token中提取用户ID
+func ExtractUserIDFromToken(tokenString string, jwtSecret string) (uint, error) {
+	// 解析token直接获取ID
+	token, err := jwt.ParseWithClaims(tokenString, &AuthClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(jwtSecret), nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+
+	if claims, ok := token.Claims.(*AuthClaims); ok && token.Valid {
+		// 从token中获取用户ID
+		userIDStr := claims.UserID
+		userID, err := strconv.ParseUint(userIDStr, 10, 32)
+		if err != nil {
+			return 0, err
+		}
+		return uint(userID), nil
+	}
+
+	return 0, errors.New("无效的token")
 }

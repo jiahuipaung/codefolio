@@ -5,8 +5,10 @@ import (
 	"codefolio/internal/service"
 	"codefolio/internal/util"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // UserHandler 处理用户相关的HTTP请求
@@ -28,7 +30,7 @@ type RegisterRequest struct {
 
 // LoginRequest 用户登录请求结构
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email"`
+	Username string `json:"username" binding:"required,min=3,max=50"`
 	Password string `json:"password" binding:"required"`
 }
 
@@ -52,14 +54,23 @@ func (h *UserHandler) Register(c *gin.Context) {
 		return // 错误已在BindAndValidate中处理
 	}
 
-	user, token, err := h.userService.Register(req.Username, req.Email, req.Password)
+	user, err := h.userService.Register(req.Username, req.Password, req.Email)
 	if err != nil {
 		switch err {
-		case service.ErrUserExists:
+		case service.ErrUserAlreadyExists:
 			common.ResponseWithError(c, common.CodeUserAlreadyExists)
 		default:
+			util.GetLogger().Error("注册失败", zap.Error(err))
 			common.ResponseWithError(c, common.CodeInternalError, http.StatusInternalServerError)
 		}
+		return
+	}
+
+	// 登录获取token
+	token, err := h.userService.Login(req.Username, req.Password)
+	if err != nil {
+		util.GetLogger().Error("注册后登录失败", zap.Error(err))
+		common.ResponseWithError(c, common.CodeInternalError, http.StatusInternalServerError)
 		return
 	}
 
@@ -80,7 +91,7 @@ func (h *UserHandler) Login(c *gin.Context) {
 		return // 错误已在BindAndValidate中处理
 	}
 
-	user, token, err := h.userService.Login(req.Email, req.Password)
+	token, err := h.userService.Login(req.Username, req.Password)
 	if err != nil {
 		switch err {
 		case service.ErrInvalidCredentials:
@@ -88,8 +99,24 @@ func (h *UserHandler) Login(c *gin.Context) {
 		case service.ErrUserNotFound:
 			common.ResponseWithError(c, common.CodeUserNotFound)
 		default:
+			util.GetLogger().Error("登录失败", zap.Error(err))
 			common.ResponseWithError(c, common.CodeInternalError, http.StatusInternalServerError)
 		}
+		return
+	}
+
+	// 获取用户信息
+	userIDFromToken, err := service.ExtractUserIDFromToken(token, h.userService)
+	if err != nil {
+		util.GetLogger().Error("从令牌获取用户ID失败", zap.Error(err))
+		common.ResponseWithError(c, common.CodeInternalError, http.StatusInternalServerError)
+		return
+	}
+
+	user, err := h.userService.GetUserByID(userIDFromToken)
+	if err != nil {
+		util.GetLogger().Error("获取用户信息失败", zap.Error(err))
+		common.ResponseWithError(c, common.CodeInternalError, http.StatusInternalServerError)
 		return
 	}
 
@@ -111,7 +138,20 @@ func (h *UserHandler) GetMe(c *gin.Context) {
 		return
 	}
 
-	user, err := h.userService.GetUserByID(userID.(string))
+	// 将userID转换为uint
+	userIDStr, ok := userID.(string)
+	if !ok {
+		common.ResponseWithError(c, common.CodeInternalError, http.StatusInternalServerError)
+		return
+	}
+
+	idUint, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		common.ResponseWithError(c, common.CodeInternalError, http.StatusInternalServerError)
+		return
+	}
+
+	user, err := h.userService.GetUserByID(uint(idUint))
 	if err != nil {
 		common.ResponseWithError(c, common.CodeInternalError, http.StatusInternalServerError)
 		return
