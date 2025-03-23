@@ -1,5 +1,5 @@
 # 构建阶段
-FROM golang:1.23-alpine AS builder
+FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
 
@@ -11,19 +11,13 @@ ENV GO111MODULE=on
 # 安装必要的构建工具
 RUN apk add --no-cache git
 
-# 复制 go.mod
-COPY go.mod ./
+# 复制所有源代码
+COPY . .
 
 # 下载依赖并生成 go.sum
 RUN go mod tidy && \
     go mod download && \
     go mod verify
-
-# 复制源代码
-COPY . .
-
-# 验证依赖
-RUN go mod verify
 
 # 构建应用
 RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/main.go
