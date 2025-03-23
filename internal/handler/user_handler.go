@@ -30,47 +30,47 @@ type LoginRequest struct {
 func (h *UserHandler) Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		ResponseWithError(c, http.StatusBadRequest, INVALID_PARAMS, err.Error())
 		return
 	}
 
 	user, err := h.userService.Register(req.Email, req.Password, req.FirstName, req.LastName)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		ResponseWithError(c, http.StatusBadRequest, ERROR, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusCreated, user)
+	ResponseWithData(c, user)
 }
 
 func (h *UserHandler) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		ResponseWithError(c, http.StatusBadRequest, INVALID_PARAMS, err.Error())
 		return
 	}
 
 	token, err := h.userService.Login(req.Email, req.Password)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+		ResponseWithError(c, http.StatusUnauthorized, UNAUTHORIZED, "无效的凭据")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"token": token})
+	ResponseWithData(c, gin.H{"token": token})
 }
 
 func (h *UserHandler) GetMe(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		ResponseWithError(c, http.StatusUnauthorized, UNAUTHORIZED, "")
 		return
 	}
 
 	user, err := h.userService.GetUserByID(userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		ResponseWithError(c, http.StatusNotFound, NOT_FOUND, "用户不存在")
 		return
 	}
 
-	c.JSON(http.StatusOK, user)
+	ResponseWithData(c, user)
 }

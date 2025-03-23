@@ -46,5 +46,5 @@ func NewFAQHandler() *FAQHandler {
 
 // GetAllFAQs 获取所有FAQ
 func (h *FAQHandler) GetAllFAQs(c *gin.Context) {
-	c.JSON(http.StatusOK, faqData)
+	ResponseWithData(c, faqData)
 }

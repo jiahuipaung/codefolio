@@ -76,7 +76,7 @@ func main() {
 
 	// 健康检查
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
+		handler.ResponseWithData(c, gin.H{"status": "ok"})
 	})
 
 	// 启动服务器
