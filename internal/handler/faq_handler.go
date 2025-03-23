@@ -13,16 +13,14 @@ type FAQ struct {
 }
 
 // FAQHandler 处理FAQ相关请求
-type FAQHandler struct{}
+type FAQHandler struct {
+	// 硬编码FAQ数据
+	faqs []FAQ
+}
 
 // NewFAQHandler 创建FAQ处理器实例
 func NewFAQHandler() *FAQHandler {
-	return &FAQHandler{}
-}
-
-// GetAllFAQs 获取所有FAQ
-func (h *FAQHandler) GetAllFAQs(c *gin.Context) {
-	// 硬编码FAQ数据
+	// 初始化硬编码FAQ数据
 	faqs := []FAQ{
 		{
 			ID:       1,
@@ -46,5 +44,12 @@ func (h *FAQHandler) GetAllFAQs(c *gin.Context) {
 		},
 	}
 
-	common.ResponseWithData(c, faqs)
+	return &FAQHandler{
+		faqs: faqs,
+	}
+}
+
+// GetFAQs 获取所有FAQ
+func (h *FAQHandler) GetFAQs(c *gin.Context) {
+	common.ResponseWithData(c, h.faqs)
 }

@@ -35,6 +35,13 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
+	// 配置文件上传参数
+	util.SetUploadConfig(
+		cfg.Upload.StoragePath,
+		cfg.Upload.MaxFileSize,
+		cfg.Upload.AllowedTypes,
+	)
+
 	// 创建路由
 	r := gin.New()
 
@@ -70,7 +77,6 @@ func main() {
 	logger.Info("正在进行数据库迁移...")
 	err = db.AutoMigrate(
 		&domain.User{},
-		&domain.FAQ{},
 		&domain.Resume{},
 		&domain.Tag{},
 		&domain.Offer{},
@@ -87,17 +93,20 @@ func main() {
 
 	// 创建仓库
 	userRepo := repository.NewUserRepository(db)
-	faqRepo := repository.NewFAQRepository(db)
 	resumeRepo := repository.NewResumeRepository(db)
 
 	// 创建服务
 	userService := service.NewUserService(userRepo, cfg.JWT.Secret, cfg.JWT.ExpireHours)
-	faqService := service.NewFAQService(faqRepo)
-	resumeService := service.NewResumeService(resumeRepo, userRepo)
+	resumeService := service.NewResumeService(
+		resumeRepo,
+		userRepo,
+		cfg.Upload.AnonymousView,
+		cfg.Upload.UserView,
+	)
 
 	// 创建处理器
 	userHandler := handler.NewUserHandler(userService)
-	faqHandler := handler.NewFAQHandler(faqService)
+	faqHandler := handler.NewFAQHandler()
 	resumeHandler := handler.NewResumeHandler(resumeService)
 
 	// 创建API分组
@@ -113,10 +122,6 @@ func main() {
 
 	// FAQ相关路由
 	api.GET("/faqs", faqHandler.GetFAQs)
-	api.GET("/faqs/:id", faqHandler.GetFAQ)
-	api.POST("/faqs", handler.AuthMiddleware(cfg.JWT.Secret), faqHandler.CreateFAQ)
-	api.PUT("/faqs/:id", handler.AuthMiddleware(cfg.JWT.Secret), faqHandler.UpdateFAQ)
-	api.DELETE("/faqs/:id", handler.AuthMiddleware(cfg.JWT.Secret), faqHandler.DeleteFAQ)
 
 	// 简历相关路由
 	api.GET("/resumes", resumeHandler.GetResumes)

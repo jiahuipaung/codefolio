@@ -6,7 +6,6 @@ import (
 	"codefolio/internal/util"
 	"errors"
 	"mime/multipart"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -60,12 +59,12 @@ type resumeService struct {
 }
 
 // NewResumeService 创建简历服务实例
-func NewResumeService(resumeRepo repository.ResumeRepository, userRepo repository.UserRepository) ResumeService {
+func NewResumeService(resumeRepo repository.ResumeRepository, userRepo repository.UserRepository, anonymousViewLimit, registeredViewLimit int) ResumeService {
 	return &resumeService{
 		resumeRepo:          resumeRepo,
 		userRepo:            userRepo,
-		anonymousViewLimit:  5,
-		registeredViewLimit: 10,
+		anonymousViewLimit:  anonymousViewLimit,
+		registeredViewLimit: registeredViewLimit,
 	}
 }
 

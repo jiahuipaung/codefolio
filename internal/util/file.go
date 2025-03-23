@@ -15,16 +15,30 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
-	// 上传目录
+// 上传目录常量
+var (
+	// UploadDir 文件上传根目录
 	UploadDir = "uploads"
-	// 简历子目录
+	// ResumeDir 简历存储子目录
 	ResumeDir = "resumes"
-	// 允许的最大文件大小 (10MB)
-	MaxFileSize = 10 * 1024 * 1024
-	// 允许的文件类型
+	// MaxFileSize 允许的最大文件大小 (10MB)
+	MaxFileSize int64 = 10 * 1024 * 1024
+	// AllowedFileType 允许的文件类型
 	AllowedFileType = "application/pdf"
 )
+
+// 设置上传配置
+func SetUploadConfig(uploadDir string, maxSize int64, allowedType string) {
+	if uploadDir != "" {
+		UploadDir = uploadDir
+	}
+	if maxSize > 0 {
+		MaxFileSize = maxSize
+	}
+	if allowedType != "" {
+		AllowedFileType = allowedType
+	}
+}
 
 // 文件相关错误
 var (
