@@ -8,7 +8,6 @@ import (
 	"codefolio/internal/repository"
 	"codefolio/internal/service"
 	"codefolio/internal/util"
-
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
@@ -29,19 +28,19 @@ func main() {
 	}
 
 	// 连接数据库
-	logger.Info("Connecting to database...",
+	logger.Info("连接数据库...",
 		zap.String("host", cfg.Database.Host),
 		zap.String("name", cfg.Database.Name))
 
 	db, err := gorm.Open(postgres.Open(cfg.GetDSN()), &gorm.Config{})
 	if err != nil {
-		logger.Fatal("Failed to connect to database", zap.Error(err))
+		logger.Fatal("无法连接到数据库", zap.Error(err))
 	}
 
 	// 自动迁移数据库
-	logger.Info("Running database migrations...")
+	logger.Info("运行数据库迁移...")
 	if err := db.AutoMigrate(&domain.User{}); err != nil {
-		logger.Fatal("Failed to migrate database", zap.Error(err))
+		logger.Fatal("数据库迁移失败", zap.Error(err))
 	}
 
 	// 初始化依赖
@@ -89,12 +88,12 @@ func main() {
 	}
 
 	// 启动服务器
-	logger.Info("Starting server",
+	logger.Info("启动服务器",
 		zap.String("port", cfg.Server.Port),
 		zap.String("environment", cfg.Server.Environment),
 		zap.String("version", cfg.Server.Version))
 
 	if err := r.Run(":" + cfg.Server.Port); err != nil {
-		logger.Fatal("Failed to start server", zap.Error(err))
+		logger.Fatal("服务器启动失败", zap.Error(err))
 	}
 }
