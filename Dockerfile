@@ -15,10 +15,15 @@ RUN apk add --no-cache git
 COPY go.mod ./
 
 # 下载依赖并生成 go.sum
-RUN go mod tidy && go mod download
+RUN go mod tidy && \
+    go mod download && \
+    go mod verify
 
 # 复制源代码
 COPY . .
+
+# 验证依赖
+RUN go mod verify
 
 # 构建应用
 RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/main.go
