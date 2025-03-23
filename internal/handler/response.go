@@ -24,7 +24,7 @@ var codeMessage = map[int]string{
 
 // Response 标准API响应结构
 type Response struct {
-	Errno   int         `json:"errno"`   // 错误码
+	Code    int         `json:"code"`    // 错误码
 	Message string      `json:"message"` // 错误信息
 	Data    interface{} `json:"data"`    // 返回数据
 }
@@ -32,7 +32,7 @@ type Response struct {
 // ResponseWithData 返回带数据的成功响应
 func ResponseWithData(c *gin.Context, data interface{}) {
 	c.JSON(200, Response{
-		Errno:   SUCCESS,
+		Code:    SUCCESS,
 		Message: codeMessage[SUCCESS],
 		Data:    data,
 	})
@@ -46,7 +46,7 @@ func ResponseWithError(c *gin.Context, httpStatus int, errCode int, msg string) 
 	}
 
 	c.JSON(httpStatus, Response{
-		Errno:   errCode,
+		Code:    errCode,
 		Message: message,
 		Data:    nil,
 	})
@@ -55,7 +55,7 @@ func ResponseWithError(c *gin.Context, httpStatus int, errCode int, msg string) 
 // ResponseSuccess 返回简单的成功响应
 func ResponseSuccess(c *gin.Context) {
 	c.JSON(200, Response{
-		Errno:   SUCCESS,
+		Code:    SUCCESS,
 		Message: codeMessage[SUCCESS],
 		Data:    nil,
 	})
