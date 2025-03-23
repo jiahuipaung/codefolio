@@ -6,159 +6,158 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 )
 
-// Config 应用程序配置
+// Config 应用配置结构
 type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
 	JWT      JWTConfig
 	Email    EmailConfig
+	Upload   UploadConfig
 }
 
 // ServerConfig 服务器配置
 type ServerConfig struct {
-	Host        string
-	Port        string
-	Environment string
-	Version     string
-	LogDir      string
+	Port    int
+	Mode    string
+	Version string
 }
 
 // DatabaseConfig 数据库配置
 type DatabaseConfig struct {
 	Host     string
-	Port     string
-	Name     string
-	User     string
+	Port     int
+	Username string
 	Password string
-	SSLMode  string
+	Name     string
 	TimeZone string
 }
 
 // JWTConfig JWT配置
 type JWTConfig struct {
-	Secret        string
-	ExpiryHours   int
-	RefreshSecret string
+	Secret      string
+	ExpireHours int
 }
 
 // EmailConfig 邮件配置
 type EmailConfig struct {
-	Host     string
-	Port     int
+	SMTPHost string
+	SMTPPort int
 	Username string
 	Password string
 	From     string
 }
 
-// LoadConfig 加载应用程序配置
+// UploadConfig 文件上传配置
+type UploadConfig struct {
+	MaxFileSize   int64  // 最大文件大小（字节）
+	AllowedTypes  string // 允许的文件类型
+	StoragePath   string // 存储路径
+	AnonymousView int    // 匿名用户查看限制
+	UserView      int    // 注册用户查看限制
+}
+
+// LoadConfig 加载配置
 func LoadConfig() *Config {
-	// 尝试加载.env文件
-	dotenvPath := ".env"
-	if _, err := os.Stat(dotenvPath); os.IsNotExist(err) {
-		// 如果.env文件不存在，记录警告但继续执行
-		fmt.Println("警告: .env文件不存在，使用环境变量或默认值")
+	// 尝试从.env文件加载环境变量
+	if err := godotenv.Load(); err != nil {
+		zap.L().Warn("未找到.env文件，将使用环境变量")
 	}
 
-	config := &Config{
+	return &Config{
 		Server: ServerConfig{
-			Host:        getEnv("SERVER_HOST", "localhost"),
-			Port:        getEnv("SERVER_PORT", "8080"),
-			Environment: getEnv("ENV", "development"),
-			Version:     getEnv("VERSION", "1.0.0"),
-			LogDir:      getEnv("LOG_DIR", "logs"),
+			Port:    getEnvAsInt("SERVER_PORT", 8080),
+			Mode:    getEnv("SERVER_MODE", "development"),
+			Version: getEnv("SERVER_VERSION", "0.1.0"),
 		},
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
-			Port:     getEnv("DB_PORT", "5432"),
+			Port:     getEnvAsInt("DB_PORT", 3306),
+			Username: getEnv("DB_USER", "root"),
+			Password: getEnv("DB_PASSWORD", ""),
 			Name:     getEnv("DB_NAME", "codefolio"),
-			User:     getEnv("DB_USER", "postgres"),
-			Password: getEnv("DB_PASSWORD", "postgres"),
-			SSLMode:  getEnv("DB_SSLMODE", "disable"),
 			TimeZone: getEnv("DB_TIMEZONE", "Asia/Shanghai"),
 		},
 		JWT: JWTConfig{
-			Secret:        getEnv("JWT_SECRET", "your-secret-key"),
-			ExpiryHours:   getEnvAsInt("JWT_EXPIRY_HOURS", 24),
-			RefreshSecret: getEnv("JWT_REFRESH_SECRET", "your-refresh-secret-key"),
+			Secret:      getEnv("JWT_SECRET", "your-secret-key"),
+			ExpireHours: getEnvAsInt("JWT_EXPIRE_HOURS", 24*7), // 默认7天
 		},
 		Email: EmailConfig{
-			Host:     getEnv("EMAIL_HOST", "smtp.example.com"),
-			Port:     getEnvAsInt("EMAIL_PORT", 587),
+			SMTPHost: getEnv("EMAIL_SMTP_HOST", ""),
+			SMTPPort: getEnvAsInt("EMAIL_SMTP_PORT", 587),
 			Username: getEnv("EMAIL_USERNAME", ""),
 			Password: getEnv("EMAIL_PASSWORD", ""),
-			From:     getEnv("EMAIL_FROM", "noreply@example.com"),
+			From:     getEnv("EMAIL_FROM", ""),
+		},
+		Upload: UploadConfig{
+			MaxFileSize:   getEnvAsInt64("UPLOAD_MAX_SIZE", 10*1024*1024), // 默认10MB
+			AllowedTypes:  getEnv("UPLOAD_ALLOWED_TYPES", ".pdf"),
+			StoragePath:   getEnv("UPLOAD_STORAGE_PATH", "./uploads"),
+			AnonymousView: getEnvAsInt("UPLOAD_ANONYMOUS_VIEW_LIMIT", 5), // 匿名用户每天可查看5份简历
+			UserView:      getEnvAsInt("UPLOAD_USER_VIEW_LIMIT", 20),     // 注册用户每天可查看20份简历
 		},
 	}
-
-	return config
 }
 
 // GetDSN 获取数据库连接字符串
 func (c *Config) GetDSN() string {
-	return fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s TimeZone=%s",
+	return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=%s",
+		c.Database.Username,
+		c.Database.Password,
 		c.Database.Host,
 		c.Database.Port,
-		c.Database.User,
-		c.Database.Password,
 		c.Database.Name,
-		c.Database.SSLMode,
 		c.Database.TimeZone,
 	)
 }
 
-// GetJWTExpiryDuration 获取JWT过期时间
-func (c *Config) GetJWTExpiryDuration() time.Duration {
-	return time.Duration(c.JWT.ExpiryHours) * time.Hour
-}
-
-// GetLogger 获取日志记录器
-func (c *Config) GetLogger() (*zap.Logger, error) {
-	var logger *zap.Logger
-	var err error
-
-	if c.Server.Environment == "production" {
-		config := zap.NewProductionConfig()
-		config.OutputPaths = []string{
-			"stdout",
-			fmt.Sprintf("%s/app.log", c.Server.LogDir),
-		}
-		logger, err = config.Build()
-	} else {
-		config := zap.NewDevelopmentConfig()
-		logger, err = config.Build()
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return logger, nil
-}
-
-// 辅助函数: 获取环境变量，如果不存在则返回默认值
+// getEnv 获取环境变量，如果不存在则返回默认值
 func getEnv(key, defaultValue string) string {
-	value := os.Getenv(key)
-	if value == "" {
-		return defaultValue
+	if value, exists := os.LookupEnv(key); exists {
+		return value
 	}
-	return value
+	return defaultValue
 }
 
-// 辅助函数: 获取环境变量并转换为整数，如果不存在或转换失败则返回默认值
+// getEnvAsInt 获取环境变量并转换为整数
 func getEnvAsInt(key string, defaultValue int) int {
-	valueStr := getEnv(key, "")
-	if valueStr == "" {
-		return defaultValue
+	if value, exists := os.LookupEnv(key); exists {
+		if intValue, err := strconv.Atoi(value); err == nil {
+			return intValue
+		}
 	}
+	return defaultValue
+}
 
-	value, err := strconv.Atoi(valueStr)
-	if err != nil {
-		return defaultValue
+// getEnvAsInt64 获取环境变量并转换为int64
+func getEnvAsInt64(key string, defaultValue int64) int64 {
+	if value, exists := os.LookupEnv(key); exists {
+		if intValue, err := strconv.ParseInt(value, 10, 64); err == nil {
+			return intValue
+		}
 	}
+	return defaultValue
+}
 
-	return value
+// getEnvAsBool 获取环境变量并转换为布尔值
+func getEnvAsBool(key string, defaultValue bool) bool {
+	if value, exists := os.LookupEnv(key); exists {
+		if boolValue, err := strconv.ParseBool(value); err == nil {
+			return boolValue
+		}
+	}
+	return defaultValue
+}
+
+// getEnvAsDuration 获取环境变量并转换为时间间隔
+func getEnvAsDuration(key string, defaultValue time.Duration) time.Duration {
+	if value, exists := os.LookupEnv(key); exists {
+		if duration, err := time.ParseDuration(value); err == nil {
+			return duration
+		}
+	}
+	return defaultValue
 }
