@@ -3,14 +3,18 @@ FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
 
-# 设置 GOPROXY
-ENV GOPROXY=https://goproxy.cn,direct
+# 设置 GOPROXY 和 GOSUMDB
+ENV GOPROXY=https://goproxy.cn,https://mirrors.aliyun.com/goproxy/,direct
+ENV GOSUMDB=sum.golang.google.cn
 ENV GO111MODULE=on
 
-# 复制 go.mod 和 go.sum
-COPY go.mod go.sum ./
+# 安装必要的构建工具
+RUN apk add --no-cache git
 
-# 下载所有依赖
+# 复制 go.mod
+COPY go.mod ./
+
+# 下载依赖并生成 go.sum
 RUN go mod tidy && go mod download
 
 # 复制源代码
