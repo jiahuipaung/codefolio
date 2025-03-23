@@ -37,14 +37,34 @@ func main() {
 	userService := service.NewUserService(userRepo, os.Getenv("JWT_SECRET"))
 	userHandler := handler.NewUserHandler(userService)
 
+	// 初始化FAQ处理器
+	faqHandler := handler.NewFAQHandler()
+
 	// 设置路由
 	r := gin.Default()
+
+	// 添加CORS中间件
+	r.Use(func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	})
 
 	// 公开路由
 	public := r.Group("/api/v1")
 	{
 		public.POST("/auth/register", userHandler.Register)
 		public.POST("/auth/login", userHandler.Login)
+
+		// FAQ路由 - 只提供获取所有FAQ的接口
+		public.GET("/faqs", faqHandler.GetAllFAQs)
 	}
 
 	// 需要认证的路由
@@ -53,6 +73,11 @@ func main() {
 	{
 		authorized.GET("/auth/me", userHandler.GetMe)
 	}
+
+	// 健康检查
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
 
 	// 启动服务器
 	port := os.Getenv("PORT")
