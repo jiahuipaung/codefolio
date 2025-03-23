@@ -3,7 +3,7 @@ package domain
 import (
 	"time"
 
-	"gorm.io/gorm"
+	_ "gorm.io/gorm"
 )
 
 // User 用户模型

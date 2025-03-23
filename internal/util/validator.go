@@ -36,8 +36,8 @@ func BindAndValidate(c *gin.Context, obj interface{}) error {
 		if errors.As(err, &validationErrors) {
 			// 处理验证错误
 			fieldErrors := formatValidationErrors(validationErrors)
-			common.ResponseWithError(c, common.CodeInvalidParams, http.StatusBadRequest)
-			return err
+			common.ResponseWithCustomError(c, common.CodeValidationFailed, "请求参数验证失败", http.StatusBadRequest)
+			return fmt.Errorf("参数验证失败: %v", fieldErrors)
 		}
 		// 其他绑定错误
 		common.ResponseWithError(c, common.CodeBadRequest, http.StatusBadRequest)
