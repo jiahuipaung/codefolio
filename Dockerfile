@@ -10,8 +10,8 @@ ENV GO111MODULE=on
 # 复制 go.mod 和 go.sum
 COPY go.mod go.sum ./
 
-# 下载依赖
-RUN go mod download
+# 下载所有依赖
+RUN go mod tidy && go mod download
 
 # 复制源代码
 COPY . .
