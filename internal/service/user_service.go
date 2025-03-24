@@ -34,6 +34,7 @@ type UserService interface {
 	Login(username, password string) (string, error)
 	GetUserByID(id uint) (*domain.User, error)
 	UpdateUser(user *domain.User) error
+	ParseToken(tokenString string) (uint, error)
 }
 
 // userService 用户服务实现
@@ -183,4 +184,9 @@ func ExtractUserIDFromToken(tokenString string, jwtSecret string) (uint, error) 
 	}
 
 	return 0, errors.New("无效的token")
+}
+
+// ParseToken 解析JWT令牌并返回用户ID
+func (s *userService) ParseToken(tokenString string) (uint, error) {
+	return ExtractUserIDFromToken(tokenString, s.jwtSecret)
 }

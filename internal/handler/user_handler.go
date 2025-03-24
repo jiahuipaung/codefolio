@@ -106,7 +106,7 @@ func (h *UserHandler) Login(c *gin.Context) {
 	}
 
 	// 获取用户信息
-	userIDFromToken, err := service.ExtractUserIDFromToken(token, h.userService)
+	userIDFromToken, err := h.userService.ParseToken(token)
 	if err != nil {
 		util.GetLogger().Error("从令牌获取用户ID失败", zap.Error(err))
 		common.ResponseWithError(c, common.CodeInternalError, http.StatusInternalServerError)
