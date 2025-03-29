@@ -139,12 +139,13 @@ func main() {
 		resumeGroup.GET("", resumeHandler.GetResumes)
 		resumeGroup.GET("/:id", resumeHandler.GetResume)
 		resumeGroup.GET("/:id/download", resumeHandler.DownloadResume)
+		resumeGroup.GET("/upload-pdf", resumeHandler.UploadPDF)
 
 		// 需要认证的路由
 		auth := resumeGroup.Use(handler.AuthMiddleware(cfg.JWT.Secret))
 		{
 			// 新的两步上传流程
-			auth.POST("/upload-pdf", resumeHandler.UploadPDF)
+			// auth.POST("/upload-pdf", resumeHandler.UploadPDF)
 			auth.POST("/create", resumeHandler.CreateResume)
 
 			// 兼容旧接口
