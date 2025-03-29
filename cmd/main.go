@@ -78,9 +78,6 @@ func main() {
 	err = db.AutoMigrate(
 		&domain.User{},
 		&domain.Resume{},
-		&domain.Tag{},
-		&domain.Offer{},
-		&domain.ResumeTag{},
 	)
 	if err != nil {
 		logger.Fatal("数据库迁移失败", zap.Error(err))
@@ -130,7 +127,6 @@ func main() {
 		resumeGroup.GET("", resumeHandler.GetResumes)
 		resumeGroup.GET("/:id", resumeHandler.GetResume)
 		resumeGroup.GET("/:id/download", resumeHandler.DownloadResume)
-		resumeGroup.GET("/tags", resumeHandler.GetTags)
 
 		// 需要认证的路由
 		auth := resumeGroup.Use(handler.AuthMiddleware(cfg.JWT.Secret))
