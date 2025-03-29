@@ -26,51 +26,31 @@ func NewResumeHandler(resumeService service.ResumeService) *ResumeHandler {
 
 // UploadResumeRequest 上传简历请求
 type UploadResumeRequest struct {
-	Title       string               `form:"title" binding:"required"`
-	Description string               `form:"description"`
-	Tags        []string             `form:"tags[]"`
-	Directions  []string             `form:"directions[]"`
-	Offers      []service.OfferInput `form:"offers"`
+	Role        string   `form:"role" binding:"required"`       // 应聘职位
+	Level       string   `form:"level" binding:"required"`      // 经历等级
+	University  string   `form:"university" binding:"required"` // 毕业院校
+	PassCompany []string `form:"pass_company[]"`                // 面试通过的公司
 }
 
 // UpdateResumeRequest 更新简历请求
 type UpdateResumeRequest struct {
-	Title       string               `json:"title"`
-	Description string               `json:"description"`
-	Tags        []string             `json:"tags"`
-	Directions  []string             `json:"directions"`
-	Offers      []service.OfferInput `json:"offers"`
+	Role        string   `json:"role"`
+	Level       string   `json:"level"`
+	University  string   `json:"university"`
+	PassCompany []string `json:"pass_company"`
 }
 
 // ResumeResponse 简历响应
 type ResumeResponse struct {
-	ID            uint            `json:"id"`
-	Title         string          `json:"title"`
-	Description   string          `json:"description"`
-	FileName      string          `json:"file_name"`
-	FileSize      int64           `json:"file_size"`
-	FileURL       string          `json:"file_url"`
-	ViewCount     int             `json:"view_count"`
-	DownloadCount int             `json:"download_count"`
-	Tags          []TagResponse   `json:"tags"`
-	Directions    []TagResponse   `json:"directions"`
-	Offers        []OfferResponse `json:"offers"`
-	CreatedAt     string          `json:"created_at"`
-	UpdatedAt     string          `json:"updated_at"`
-}
-
-// TagResponse 标签响应
-type TagResponse struct {
-	ID   uint   `json:"id"`
-	Name string `json:"name"`
-}
-
-// OfferResponse Offer响应
-type OfferResponse struct {
-	ID        uint   `json:"id"`
-	Company   string `json:"company"`
-	Position  string `json:"position"`
-	OfferDate string `json:"offer_date"`
+	ID          uint     `json:"id"`
+	UserID      uint     `json:"user_id"`
+	ImageURL    string   `json:"image_url"`
+	Role        string   `json:"role"`
+	Level       string   `json:"level"`
+	University  string   `json:"university"`
+	PassCompany []string `json:"pass_company"`
+	CreatedAt   string   `json:"created_at"`
+	UpdatedAt   string   `json:"updated_at"`
 }
 
 // GetPagingParams 获取分页参数
@@ -113,67 +93,31 @@ func getCurrentUserID(c *gin.Context) uint {
 }
 
 // convertToResumeResponse 转换为简历响应
-func (h *ResumeHandler) convertToResumeResponse(c *gin.Context, resume *domain.Resume) ResumeResponse {
-	// 分离技术栈标签和方向标签
-	var tags []TagResponse
-	var directions []TagResponse
-
-	for _, tag := range resume.Tags {
-		tagResp := TagResponse{
-			ID:   tag.ID,
-			Name: tag.Name,
-		}
-
-		if tag.Type == "tech_stack" {
-			tags = append(tags, tagResp)
-		} else if tag.Type == "direction" {
-			directions = append(directions, tagResp)
-		}
-	}
-
-	// 转换Offer
-	var offers []OfferResponse
-	for _, offer := range resume.Offers {
-		offers = append(offers, OfferResponse{
-			ID:        offer.ID,
-			Company:   offer.Company,
-			Position:  offer.Position,
-			OfferDate: offer.OfferDate.Format("2006-01-02"),
-		})
-	}
-
-	// 获取文件URL
-	fileURL := h.resumeService.GetResumeFileURL(c, resume)
-
+func (h *ResumeHandler) convertToResumeResponse(resume *domain.Resume) ResumeResponse {
 	return ResumeResponse{
-		ID:            resume.ID,
-		Title:         resume.Title,
-		Description:   resume.Description,
-		FileName:      resume.FileName,
-		FileSize:      resume.FileSize,
-		FileURL:       fileURL,
-		ViewCount:     resume.ViewCount,
-		DownloadCount: resume.DownloadCount,
-		Tags:          tags,
-		Directions:    directions,
-		Offers:        offers,
-		CreatedAt:     resume.CreatedAt.Format("2006-01-02 15:04:05"),
-		UpdatedAt:     resume.UpdatedAt.Format("2006-01-02 15:04:05"),
+		ID:          resume.ID,
+		UserID:      resume.UserID,
+		ImageURL:    resume.ImageURL,
+		Role:        resume.Role,
+		Level:       resume.Level,
+		University:  resume.University,
+		PassCompany: resume.PassCompany,
+		CreatedAt:   resume.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt:   resume.UpdatedAt.Format("2006-01-02 15:04:05"),
 	}
 }
 
 // UploadResume 上传简历
 // @Summary 上传简历
-// @Description 上传简历文件
+// @Description 上传简历文件并转换为图片
 // @Tags 简历
 // @Accept multipart/form-data
 // @Produce json
 // @Param file formData file true "简历文件(PDF)"
-// @Param title formData string true "简历标题"
-// @Param description formData string false "简历描述"
-// @Param tags[] formData []string false "技术栈标签"
-// @Param directions[] formData []string false "技术方向标签"
-// @Param offers formData []service.OfferInput false "公司Offer记录"
+// @Param role formData string true "应聘职位"
+// @Param level formData string true "经历等级"
+// @Param university formData string true "毕业院校"
+// @Param pass_company[] formData []string false "面试通过的公司"
 // @Success 200 {object} common.Response{data=ResumeResponse}
 // @Failure 400,401,500 {object} common.Response
 // @Router /api/v1/resumes [post]
@@ -206,12 +150,11 @@ func (h *ResumeHandler) UploadResume(c *gin.Context) {
 	resume, err := h.resumeService.CreateResume(
 		c,
 		userID,
-		req.Title,
-		req.Description,
 		file,
-		req.Tags,
-		req.Directions,
-		req.Offers,
+		req.Role,
+		req.Level,
+		req.University,
+		req.PassCompany,
 	)
 
 	if err != nil {
@@ -228,7 +171,7 @@ func (h *ResumeHandler) UploadResume(c *gin.Context) {
 	}
 
 	// 转换为响应结构
-	resp := h.convertToResumeResponse(c, resume)
+	resp := h.convertToResumeResponse(resume)
 
 	common.ResponseWithData(c, resp)
 }
@@ -270,7 +213,7 @@ func (h *ResumeHandler) GetResume(c *gin.Context) {
 	}
 
 	// 转换为响应结构
-	resp := h.convertToResumeResponse(c, resume)
+	resp := h.convertToResumeResponse(resume)
 
 	common.ResponseWithData(c, resp)
 }
@@ -282,9 +225,9 @@ func (h *ResumeHandler) GetResume(c *gin.Context) {
 // @Produce json
 // @Param page query int false "页码，默认1"
 // @Param size query int false "每页数量，默认10"
-// @Param tag_id query int false "按标签ID筛选"
-// @Param direction query string false "按技术方向筛选"
-// @Param company query string false "按公司名称筛选"
+// @Param role query string false "按职位筛选"
+// @Param level query string false "按经历等级筛选"
+// @Param university query string false "按毕业院校筛选"
 // @Success 200 {object} common.Response{data=[]ResumeResponse}
 // @Failure 400,500 {object} common.Response
 // @Router /api/v1/resumes [get]
@@ -293,17 +236,15 @@ func (h *ResumeHandler) GetResumes(c *gin.Context) {
 	page, size := GetPagingParams(c)
 
 	// 获取筛选参数
-	tagIDStr := c.DefaultQuery("tag_id", "0")
-	tagID, _ := strconv.ParseUint(tagIDStr, 10, 32)
-
-	direction := c.DefaultQuery("direction", "")
-	company := c.DefaultQuery("company", "")
+	role := c.DefaultQuery("role", "")
+	level := c.DefaultQuery("level", "")
+	university := c.DefaultQuery("university", "")
 
 	// 获取当前用户ID
 	userID := getCurrentUserID(c)
 
 	// 获取简历列表
-	resumes, total, err := h.resumeService.GetAllResumes(page, size, uint(tagID), direction, company, userID)
+	resumes, total, err := h.resumeService.GetAllResumes(page, size, role, level, university, userID)
 	if err != nil {
 		switch err {
 		case service.ErrViewLimitExceeded:
@@ -318,7 +259,7 @@ func (h *ResumeHandler) GetResumes(c *gin.Context) {
 	// 转换为响应结构
 	var respList []ResumeResponse
 	for _, resume := range resumes {
-		respList = append(respList, h.convertToResumeResponse(c, &resume))
+		respList = append(respList, h.convertToResumeResponse(&resume))
 	}
 
 	// 构建分页响应
@@ -358,7 +299,7 @@ func (h *ResumeHandler) GetUserResumes(c *gin.Context) {
 	// 转换为响应结构
 	var respList []ResumeResponse
 	for _, resume := range resumes {
-		respList = append(respList, h.convertToResumeResponse(c, &resume))
+		respList = append(respList, h.convertToResumeResponse(&resume))
 	}
 
 	common.ResponseWithData(c, respList)
@@ -366,7 +307,7 @@ func (h *ResumeHandler) GetUserResumes(c *gin.Context) {
 
 // UpdateResume 更新简历信息
 // @Summary 更新简历信息
-// @Description 更新简历基本信息、标签和Offer
+// @Description 更新简历基本信息
 // @Tags 简历
 // @Accept json
 // @Produce json
@@ -404,11 +345,10 @@ func (h *ResumeHandler) UpdateResume(c *gin.Context) {
 	resume, err := h.resumeService.UpdateResume(
 		uint(id),
 		userID,
-		req.Title,
-		req.Description,
-		req.Tags,
-		req.Directions,
-		req.Offers,
+		req.Role,
+		req.Level,
+		req.University,
+		req.PassCompany,
 	)
 
 	if err != nil {
@@ -425,14 +365,14 @@ func (h *ResumeHandler) UpdateResume(c *gin.Context) {
 	}
 
 	// 转换为响应结构
-	resp := h.convertToResumeResponse(c, resume)
+	resp := h.convertToResumeResponse(resume)
 
 	common.ResponseWithData(c, resp)
 }
 
 // UpdateResumeFile 更新简历文件
 // @Summary 更新简历文件
-// @Description 更新简历文件
+// @Description 更新简历文件并转换为图片
 // @Tags 简历
 // @Accept multipart/form-data
 // @Produce json
@@ -486,7 +426,7 @@ func (h *ResumeHandler) UpdateResumeFile(c *gin.Context) {
 	}
 
 	// 转换为响应结构
-	resp := h.convertToResumeResponse(c, resume)
+	resp := h.convertToResumeResponse(resume)
 
 	common.ResponseWithData(c, resp)
 }
@@ -572,39 +512,7 @@ func (h *ResumeHandler) DownloadResume(c *gin.Context) {
 	}
 
 	// 发送文件
-	c.FileAttachment(resume.FilePath, resume.FileName)
-}
-
-// GetTags 获取所有标签
-// @Summary 获取所有标签
-// @Description 获取所有技术栈或方向标签
-// @Tags 标签
-// @Produce json
-// @Param type query string false "标签类型(tech_stack或direction)"
-// @Success 200 {object} common.Response{data=[]TagResponse}
-// @Failure 500 {object} common.Response
-// @Router /api/v1/resume-tags [get]
-func (h *ResumeHandler) GetTags(c *gin.Context) {
-	tagType := c.DefaultQuery("type", "")
-
-	// 获取标签
-	tags, err := h.resumeService.GetAllTags(tagType)
-	if err != nil {
-		util.GetLogger().Error("获取标签失败", zap.Error(err))
-		common.ResponseWithError(c, common.CodeInternalError, http.StatusInternalServerError)
-		return
-	}
-
-	// 转换为响应结构
-	var respList []TagResponse
-	for _, tag := range tags {
-		respList = append(respList, TagResponse{
-			ID:   tag.ID,
-			Name: tag.Name,
-		})
-	}
-
-	common.ResponseWithData(c, respList)
+	c.FileAttachment(resume.ImageURL, "resume.pdf")
 }
 
 // ServeResumeFile 提供简历文件服务

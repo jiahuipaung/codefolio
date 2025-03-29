@@ -18,7 +18,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -68,7 +68,7 @@ func main() {
 
 	// 连接数据库
 	logger.Info("正在连接数据库...", zap.String("dsn", cfg.GetDSN()))
-	db, err := gorm.Open(mysql.Open(cfg.GetDSN()), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(cfg.GetDSN()), &gorm.Config{})
 	if err != nil {
 		logger.Fatal("数据库连接失败", zap.Error(err))
 	}
@@ -124,17 +124,24 @@ func main() {
 	api.GET("/faqs", faqHandler.GetFAQs)
 
 	// 简历相关路由
-	api.GET("/resumes", resumeHandler.GetResumes)
-	api.GET("/resumes/:id", resumeHandler.GetResume)
-	api.GET("/resumes/:id/download", resumeHandler.DownloadResume)
-	api.GET("/resume-tags", resumeHandler.GetTags)
+	resumeGroup := api.Group("/resumes")
+	{
+		// 公开路由
+		resumeGroup.GET("", resumeHandler.GetResumes)
+		resumeGroup.GET("/:id", resumeHandler.GetResume)
+		resumeGroup.GET("/:id/download", resumeHandler.DownloadResume)
+		resumeGroup.GET("/tags", resumeHandler.GetTags)
 
-	// 需要认证的简历路由
-	api.POST("/resumes", handler.AuthMiddleware(cfg.JWT.Secret), resumeHandler.UploadResume)
-	api.PUT("/resumes/:id", handler.AuthMiddleware(cfg.JWT.Secret), resumeHandler.UpdateResume)
-	api.PUT("/resumes/:id/file", handler.AuthMiddleware(cfg.JWT.Secret), resumeHandler.UpdateResumeFile)
-	api.DELETE("/resumes/:id", handler.AuthMiddleware(cfg.JWT.Secret), resumeHandler.DeleteResume)
-	api.GET("/user/resumes", handler.AuthMiddleware(cfg.JWT.Secret), resumeHandler.GetUserResumes)
+		// 需要认证的路由
+		auth := resumeGroup.Use(handler.AuthMiddleware(cfg.JWT.Secret))
+		{
+			auth.POST("", resumeHandler.UploadResume)
+			auth.PUT("/:id", resumeHandler.UpdateResume)
+			auth.PUT("/:id/file", resumeHandler.UpdateResumeFile)
+			auth.DELETE("/:id", resumeHandler.DeleteResume)
+			auth.GET("/user/list", resumeHandler.GetUserResumes)
+		}
+	}
 
 	// 启动服务器
 	port := fmt.Sprintf(":%d", cfg.Server.Port)

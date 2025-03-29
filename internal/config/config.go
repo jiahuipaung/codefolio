@@ -104,7 +104,7 @@ func LoadConfig() *Config {
 
 // GetDSN 获取数据库连接字符串
 func (c *Config) GetDSN() string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=%s",
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable&TimeZone=%s",
 		c.Database.Username,
 		c.Database.Password,
 		c.Database.Host,

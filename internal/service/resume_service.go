@@ -5,10 +5,8 @@ import (
 	"codefolio/internal/repository"
 	"codefolio/internal/util"
 	"errors"
-	"mime/multipart"
-	"time"
-
 	"github.com/gin-gonic/gin"
+	"mime/multipart"
 )
 
 // 简历相关错误
@@ -21,16 +19,13 @@ var (
 // ResumeService 简历服务接口
 type ResumeService interface {
 	// 简历基本操作
-	CreateResume(c *gin.Context, userID uint, title, description string, file *multipart.FileHeader, tags []string, directions []string, offers []OfferInput) (*domain.Resume, error)
+	CreateResume(c *gin.Context, userID uint, file *multipart.FileHeader, role, level, university string, passCompany []string) (*domain.Resume, error)
 	GetResumeByID(c *gin.Context, id uint, currentUserID uint) (*domain.Resume, error)
 	GetUserResumes(userID uint) ([]domain.Resume, error)
-	GetAllResumes(page, size int, tagID uint, direction, company string, currentUserID uint) ([]domain.Resume, int64, error)
-	UpdateResume(resumeID, userID uint, title, description string, tags []string, directions []string, offers []OfferInput) (*domain.Resume, error)
+	GetAllResumes(page, size int, role, level, university string, currentUserID uint) ([]domain.Resume, int64, error)
+	UpdateResume(resumeID, userID uint, role, level, university string, passCompany []string) (*domain.Resume, error)
 	UpdateResumeFile(c *gin.Context, resumeID, userID uint, file *multipart.FileHeader) (*domain.Resume, error)
 	DeleteResume(resumeID, userID uint) error
-
-	// 标签相关
-	GetAllTags(tagType string) ([]domain.Tag, error)
 
 	// 文件相关
 	GetResumeFileURL(c *gin.Context, resume *domain.Resume) string
@@ -38,13 +33,6 @@ type ResumeService interface {
 
 	// 访问控制
 	CanViewResume(userID uint) bool
-}
-
-// OfferInput Offer输入数据
-type OfferInput struct {
-	Company  string `json:"company"`
-	Position string `json:"position"`
-	Date     string `json:"date"`
 }
 
 // resumeService 简历服务实现
@@ -69,8 +57,8 @@ func NewResumeService(resumeRepo repository.ResumeRepository, userRepo repositor
 }
 
 // CreateResume 创建简历
-func (s *resumeService) CreateResume(c *gin.Context, userID uint, title, description string, file *multipart.FileHeader, tagNames []string, directionNames []string, offers []OfferInput) (*domain.Resume, error) {
-	// 保存文件
+func (s *resumeService) CreateResume(c *gin.Context, userID uint, file *multipart.FileHeader, role, level, university string, passCompany []string) (*domain.Resume, error) {
+	// 保存文件并转换为图片
 	fileResult, err := util.SaveUploadedFile(c, file, userID)
 	if err != nil {
 		return nil, err
@@ -79,12 +67,11 @@ func (s *resumeService) CreateResume(c *gin.Context, userID uint, title, descrip
 	// 创建简历记录
 	resume := &domain.Resume{
 		UserID:      userID,
-		Title:       title,
-		Description: description,
-		FilePath:    fileResult.FilePath,
-		FileName:    fileResult.FileName,
-		FileType:    fileResult.FileType,
-		FileSize:    fileResult.FileSize,
+		ImageURL:    fileResult.FilePath,
+		Role:        role,
+		Level:       level,
+		University:  university,
+		PassCompany: passCompany,
 	}
 
 	// 使用事务确保数据一致性
@@ -93,37 +80,6 @@ func (s *resumeService) CreateResume(c *gin.Context, userID uint, title, descrip
 		// 如果保存数据库失败，删除已上传的文件
 		_ = util.DeleteFile(fileResult.FilePath)
 		return nil, err
-	}
-
-	// 处理标签
-	for _, tagName := range tagNames {
-		tag, err := s.resumeRepo.FindOrCreateTag(tagName, "tech_stack")
-		if err != nil {
-			continue
-		}
-		resume.Tags = append(resume.Tags, *tag)
-	}
-
-	// 处理方向
-	for _, dirName := range directionNames {
-		dir, err := s.resumeRepo.FindOrCreateTag(dirName, "direction")
-		if err != nil {
-			continue
-		}
-		resume.Tags = append(resume.Tags, *dir)
-	}
-
-	// 处理Offer
-	for _, offerInput := range offers {
-		offerDate, _ := time.Parse("2006-01-02", offerInput.Date)
-		offer := &domain.Offer{
-			ResumeID:  resume.ID,
-			Company:   offerInput.Company,
-			Position:  offerInput.Position,
-			OfferDate: offerDate,
-		}
-		_ = s.resumeRepo.CreateOffer(offer)
-		resume.Offers = append(resume.Offers, *offer)
 	}
 
 	return resume, nil
@@ -156,17 +112,17 @@ func (s *resumeService) GetUserResumes(userID uint) ([]domain.Resume, error) {
 }
 
 // GetAllResumes 获取所有简历（分页）
-func (s *resumeService) GetAllResumes(page, size int, tagID uint, direction, company string, currentUserID uint) ([]domain.Resume, int64, error) {
+func (s *resumeService) GetAllResumes(page, size int, role, level, university string, currentUserID uint) ([]domain.Resume, int64, error) {
 	// 检查访问权限
 	if !s.CanViewResume(currentUserID) {
 		return nil, 0, ErrViewLimitExceeded
 	}
 
-	return s.resumeRepo.FindAll(page, size, tagID, direction, company)
+	return s.resumeRepo.FindAll(page, size, role, level, university)
 }
 
 // UpdateResume 更新简历信息（不包括文件）
-func (s *resumeService) UpdateResume(resumeID, userID uint, title, description string, tagNames []string, directionNames []string, offers []OfferInput) (*domain.Resume, error) {
+func (s *resumeService) UpdateResume(resumeID, userID uint, role, level, university string, passCompany []string) (*domain.Resume, error) {
 	// 获取简历
 	resume, err := s.resumeRepo.FindByID(resumeID)
 	if err != nil || resume == nil {
@@ -179,55 +135,14 @@ func (s *resumeService) UpdateResume(resumeID, userID uint, title, description s
 	}
 
 	// 更新基本信息
-	resume.Title = title
-	resume.Description = description
+	resume.Role = role
+	resume.Level = level
+	resume.University = university
+	resume.PassCompany = passCompany
 
 	// 保存基本信息
 	if err := s.resumeRepo.Update(resume); err != nil {
 		return nil, err
-	}
-
-	// 更新标签（先删除所有关联，再重新添加）
-	resume.Tags = []domain.Tag{}
-
-	// 处理技术栈标签
-	for _, tagName := range tagNames {
-		tag, err := s.resumeRepo.FindOrCreateTag(tagName, "tech_stack")
-		if err != nil {
-			continue
-		}
-		resume.Tags = append(resume.Tags, *tag)
-	}
-
-	// 处理方向标签
-	for _, dirName := range directionNames {
-		dir, err := s.resumeRepo.FindOrCreateTag(dirName, "direction")
-		if err != nil {
-			continue
-		}
-		resume.Tags = append(resume.Tags, *dir)
-	}
-
-	// 更新Offer（先删除所有关联，再重新添加）
-	if err := s.resumeRepo.DeleteOffersByResumeID(resumeID); err != nil {
-		return nil, err
-	}
-
-	resume.Offers = []domain.Offer{}
-
-	// 处理Offer
-	for _, offerInput := range offers {
-		offerDate, _ := time.Parse("2006-01-02", offerInput.Date)
-		offer := &domain.Offer{
-			ResumeID:  resume.ID,
-			Company:   offerInput.Company,
-			Position:  offerInput.Position,
-			OfferDate: offerDate,
-		}
-		if err := s.resumeRepo.CreateOffer(offer); err != nil {
-			continue
-		}
-		resume.Offers = append(resume.Offers, *offer)
 	}
 
 	return resume, nil
@@ -253,13 +168,10 @@ func (s *resumeService) UpdateResumeFile(c *gin.Context, resumeID, userID uint, 
 	}
 
 	// 保存旧文件路径，以便失败时恢复
-	oldFilePath := resume.FilePath
+	oldFilePath := resume.ImageURL
 
 	// 更新简历信息
-	resume.FilePath = fileResult.FilePath
-	resume.FileName = fileResult.FileName
-	resume.FileType = fileResult.FileType
-	resume.FileSize = fileResult.FileSize
+	resume.ImageURL = fileResult.FilePath
 
 	// 保存到数据库
 	if err := s.resumeRepo.Update(resume); err != nil {
@@ -288,20 +200,15 @@ func (s *resumeService) DeleteResume(resumeID, userID uint) error {
 	}
 
 	// 删除文件
-	_ = util.DeleteFile(resume.FilePath)
+	_ = util.DeleteFile(resume.ImageURL)
 
 	// 删除数据库记录
 	return s.resumeRepo.Delete(resumeID)
 }
 
-// GetAllTags 获取所有标签
-func (s *resumeService) GetAllTags(tagType string) ([]domain.Tag, error) {
-	return s.resumeRepo.FindAllTags(tagType)
-}
-
 // GetResumeFileURL 获取简历文件URL
 func (s *resumeService) GetResumeFileURL(c *gin.Context, resume *domain.Resume) string {
-	return util.GetFileURL(c, resume.FilePath)
+	return util.GetFileURL(c, resume.ImageURL)
 }
 
 // DownloadResume 下载简历
