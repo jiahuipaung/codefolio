@@ -24,7 +24,27 @@ func NewResumeHandler(resumeService service.ResumeService) *ResumeHandler {
 	}
 }
 
-// UploadResumeRequest 上传简历请求
+// UploadPDFRequest PDF上传请求
+type UploadPDFRequest struct {
+	// 无需附加字段，仅包含文件
+}
+
+// UploadPDFResponse PDF上传响应
+type UploadPDFResponse struct {
+	ImageURL string `json:"image_url"` // 转换后的图片URL
+	FileKey  string `json:"file_key"`  // 文件标识，用于后续创建简历时关联
+}
+
+// CreateResumeRequest 创建简历请求
+type CreateResumeRequest struct {
+	FileKey     string   `json:"file_key" binding:"required"`   // 上传PDF时返回的文件标识
+	Role        string   `json:"role" binding:"required"`       // 应聘职位
+	Level       string   `json:"level" binding:"required"`      // 经历等级
+	University  string   `json:"university" binding:"required"` // 毕业院校
+	PassCompany []string `json:"pass_company"`                  // 面试通过的公司
+}
+
+// UploadResumeRequest 上传简历请求（兼容旧接口）
 type UploadResumeRequest struct {
 	Role        string   `form:"role" binding:"required"`       // 应聘职位
 	Level       string   `form:"level" binding:"required"`      // 经历等级
@@ -107,7 +127,112 @@ func (h *ResumeHandler) convertToResumeResponse(resume *domain.Resume) ResumeRes
 	}
 }
 
-// UploadResume 上传简历
+// UploadPDF 上传简历PDF文件（第一步）
+// @Summary 上传简历PDF文件
+// @Description 仅上传简历PDF文件并转换为图片，返回图片URL和文件标识，供前端预览和后续创建简历使用
+// @Tags 简历
+// @Accept multipart/form-data
+// @Produce json
+// @Param file formData file true "简历文件(PDF)"
+// @Success 200 {object} common.Response{data=UploadPDFResponse}
+// @Failure 400,401,500 {object} common.Response
+// @Router /api/v1/resumes/upload-pdf [post]
+// @Security BearerAuth
+func (h *ResumeHandler) UploadPDF(c *gin.Context) {
+	// 获取当前用户ID
+	userID := getCurrentUserID(c)
+	if userID == 0 {
+		common.ResponseWithError(c, common.CodeUnauthorized, http.StatusUnauthorized)
+		return
+	}
+
+	// 获取文件
+	file, err := c.FormFile("file")
+	if err != nil {
+		util.GetLogger().Error("获取上传文件失败", zap.Error(err))
+		common.ResponseWithError(c, common.CodeInvalidParams)
+		return
+	}
+
+	// 上传并转换PDF
+	fileResult, err := h.resumeService.UploadAndConvertPDF(c, userID, file)
+	if err != nil {
+		switch err {
+		case util.ErrFileTooLarge:
+			common.ResponseWithError(c, common.CodeInvalidParams)
+		case util.ErrInvalidFileType:
+			common.ResponseWithError(c, common.CodeInvalidParams)
+		default:
+			util.GetLogger().Error("上传PDF失败", zap.Error(err))
+			common.ResponseWithError(c, common.CodeInternalError, http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// 构建响应
+	resp := UploadPDFResponse{
+		ImageURL: fileResult.FilePath,
+		FileKey:  fileResult.FileKey,
+	}
+
+	common.ResponseWithData(c, resp)
+}
+
+// CreateResume 创建简历（第二步）
+// @Summary 创建简历
+// @Description 使用已上传的PDF文件创建简历（需要先调用上传PDF接口）
+// @Tags 简历
+// @Accept json
+// @Produce json
+// @Param request body CreateResumeRequest true "创建简历请求"
+// @Success 200 {object} common.Response{data=ResumeResponse}
+// @Failure 400,401,500 {object} common.Response
+// @Router /api/v1/resumes/create [post]
+// @Security BearerAuth
+func (h *ResumeHandler) CreateResume(c *gin.Context) {
+	// 获取当前用户ID
+	userID := getCurrentUserID(c)
+	if userID == 0 {
+		common.ResponseWithError(c, common.CodeUnauthorized, http.StatusUnauthorized)
+		return
+	}
+
+	// 绑定参数
+	var req CreateResumeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		util.GetLogger().Error("绑定请求参数失败", zap.Error(err))
+		common.ResponseWithError(c, common.CodeInvalidParams)
+		return
+	}
+
+	// 创建简历
+	resume, err := h.resumeService.CreateResumeWithFileKey(
+		userID,
+		req.FileKey,
+		req.Role,
+		req.Level,
+		req.University,
+		req.PassCompany,
+	)
+
+	if err != nil {
+		switch err {
+		case service.ErrFileNotFound:
+			common.ResponseWithError(c, common.CodeInvalidParams, http.StatusBadRequest)
+		default:
+			util.GetLogger().Error("创建简历失败", zap.Error(err))
+			common.ResponseWithError(c, common.CodeInternalError, http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// 转换为响应结构
+	resp := h.convertToResumeResponse(resume)
+
+	common.ResponseWithData(c, resp)
+}
+
+// UploadResume 上传简历（兼容旧接口）
 // @Summary 上传简历
 // @Description 上传简历文件并转换为图片
 // @Tags 简历

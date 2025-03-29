@@ -143,6 +143,11 @@ func main() {
 		// 需要认证的路由
 		auth := resumeGroup.Use(handler.AuthMiddleware(cfg.JWT.Secret))
 		{
+			// 新的两步上传流程
+			auth.POST("/upload-pdf", resumeHandler.UploadPDF)
+			auth.POST("/create", resumeHandler.CreateResume)
+
+			// 兼容旧接口
 			auth.POST("", resumeHandler.UploadResume)
 			auth.PUT("/:id", resumeHandler.UpdateResume)
 			auth.PUT("/:id/file", resumeHandler.UpdateResumeFile)

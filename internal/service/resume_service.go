@@ -5,8 +5,11 @@ import (
 	"codefolio/internal/repository"
 	"codefolio/internal/util"
 	"errors"
-	"github.com/gin-gonic/gin"
 	"mime/multipart"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // 简历相关错误
@@ -14,7 +17,24 @@ var (
 	ErrResumeNotFound    = errors.New("简历不存在")
 	ErrNotResumeOwner    = errors.New("非简历所有者，无权操作")
 	ErrViewLimitExceeded = errors.New("已超过简历查看限制")
+	ErrFileNotFound      = errors.New("文件不存在或已过期")
 )
+
+// FileResult 文件处理结果
+type FileResult struct {
+	FilePath string // 文件路径
+	FileKey  string // 文件唯一标识
+}
+
+// TempFileInfo 临时文件信息
+type TempFileInfo struct {
+	UserID    uint      // 上传用户ID
+	FilePath  string    // 文件路径
+	CreatedAt time.Time // 创建时间
+}
+
+// 临时文件缓存，用于存储已上传但尚未关联到简历的文件
+var tempFiles = make(map[string]TempFileInfo)
 
 // ResumeService 简历服务接口
 type ResumeService interface {
@@ -28,6 +48,8 @@ type ResumeService interface {
 	DeleteResume(resumeID, userID uint) error
 
 	// 文件相关
+	UploadAndConvertPDF(c *gin.Context, userID uint, file *multipart.FileHeader) (*FileResult, error)
+	CreateResumeWithFileKey(userID uint, fileKey, role, level, university string, passCompany []string) (*domain.Resume, error)
 	GetResumeFileURL(c *gin.Context, resume *domain.Resume) string
 	DownloadResume(c *gin.Context, resumeID, userID uint) (*domain.Resume, error)
 
@@ -48,6 +70,9 @@ type resumeService struct {
 
 // NewResumeService 创建简历服务实例
 func NewResumeService(resumeRepo repository.ResumeRepository, userRepo repository.UserRepository, anonymousViewLimit, registeredViewLimit int) ResumeService {
+	// 启动临时文件清理goroutine
+	go cleanupTempFiles()
+
 	return &resumeService{
 		resumeRepo:          resumeRepo,
 		userRepo:            userRepo,
@@ -56,7 +81,83 @@ func NewResumeService(resumeRepo repository.ResumeRepository, userRepo repositor
 	}
 }
 
-// CreateResume 创建简历
+// 定期清理过期的临时文件（超过30分钟未使用的文件）
+func cleanupTempFiles() {
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		now := time.Now()
+		for key, info := range tempFiles {
+			// 超过30分钟的文件视为过期
+			if now.Sub(info.CreatedAt) > 30*time.Minute {
+				_ = util.DeleteFile(info.FilePath)
+				delete(tempFiles, key)
+			}
+		}
+	}
+}
+
+// UploadAndConvertPDF 上传并转换PDF文件（第一步）
+func (s *resumeService) UploadAndConvertPDF(c *gin.Context, userID uint, file *multipart.FileHeader) (*FileResult, error) {
+	// 上传并转换文件
+	uploadResult, err := util.SaveUploadedFile(c, file, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 生成文件唯一标识
+	fileKey := uuid.New().String()
+
+	// 存入临时文件缓存
+	tempFiles[fileKey] = TempFileInfo{
+		UserID:    userID,
+		FilePath:  uploadResult.FilePath,
+		CreatedAt: time.Now(),
+	}
+
+	return &FileResult{
+		FilePath: uploadResult.FilePath,
+		FileKey:  fileKey,
+	}, nil
+}
+
+// CreateResumeWithFileKey 使用文件标识创建简历（第二步）
+func (s *resumeService) CreateResumeWithFileKey(userID uint, fileKey, role, level, university string, passCompany []string) (*domain.Resume, error) {
+	// 获取临时文件信息
+	fileInfo, exists := tempFiles[fileKey]
+	if !exists {
+		return nil, ErrFileNotFound
+	}
+
+	// 验证用户身份
+	if fileInfo.UserID != userID {
+		return nil, ErrNotResumeOwner
+	}
+
+	// 创建简历记录
+	resume := &domain.Resume{
+		UserID:      userID,
+		ImageURL:    fileInfo.FilePath,
+		Role:        role,
+		Level:       level,
+		University:  university,
+		PassCompany: passCompany,
+	}
+
+	// 保存到数据库
+	err := s.resumeRepo.Create(resume)
+	if err != nil {
+		return nil, err
+	}
+
+	// 从临时文件缓存中移除
+	delete(tempFiles, fileKey)
+
+	return resume, nil
+}
+
+// CreateResume 创建简历（一次性操作，保留兼容性）
 func (s *resumeService) CreateResume(c *gin.Context, userID uint, file *multipart.FileHeader, role, level, university string, passCompany []string) (*domain.Resume, error) {
 	// 保存文件并转换为图片
 	fileResult, err := util.SaveUploadedFile(c, file, userID)
@@ -86,7 +187,7 @@ func (s *resumeService) CreateResume(c *gin.Context, userID uint, file *multipar
 }
 
 // GetResumeByID 根据ID获取简历
-func (s *resumeService) GetResumeByID(c *gin.Context, id uint, currentUserID uint) (*domain.Resume, error) {
+func (s *resumeService) GetResumeByID(_ *gin.Context, id uint, currentUserID uint) (*domain.Resume, error) {
 	// 检查是否可以访问简历
 	if !s.CanViewResume(currentUserID) {
 		return nil, ErrViewLimitExceeded
@@ -212,7 +313,7 @@ func (s *resumeService) GetResumeFileURL(c *gin.Context, resume *domain.Resume) 
 }
 
 // DownloadResume 下载简历
-func (s *resumeService) DownloadResume(c *gin.Context, resumeID, userID uint) (*domain.Resume, error) {
+func (s *resumeService) DownloadResume(_ *gin.Context, resumeID, userID uint) (*domain.Resume, error) {
 	// 检查是否可以访问简历
 	if !s.CanViewResume(userID) {
 		return nil, ErrViewLimitExceeded
