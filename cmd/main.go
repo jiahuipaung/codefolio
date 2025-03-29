@@ -68,10 +68,22 @@ func main() {
 
 	// 连接数据库
 	logger.Info("正在连接数据库...", zap.String("dsn", cfg.GetDSN()))
-	db, err := gorm.Open(postgres.Open(cfg.GetDSN()), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(cfg.GetDSN()), &gorm.Config{
+		DisableForeignKeyConstraintWhenMigrating: true,
+		PrepareStmt:                              true,
+	})
 	if err != nil {
 		logger.Fatal("数据库连接失败", zap.Error(err))
 	}
+
+	// 设置连接池
+	sqlDB, err := db.DB()
+	if err != nil {
+		logger.Fatal("获取数据库连接池失败", zap.Error(err))
+	}
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetMaxOpenConns(100)
+	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	// 自动迁移数据模型
 	logger.Info("正在进行数据库迁移...")
