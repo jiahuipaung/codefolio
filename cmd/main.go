@@ -139,13 +139,12 @@ func main() {
 		resumeGroup.GET("", resumeHandler.GetResumes)
 		resumeGroup.GET("/:id", resumeHandler.GetResume)
 		resumeGroup.GET("/:id/download", resumeHandler.DownloadResume)
-		resumeGroup.GET("/upload-pdf", resumeHandler.UploadPDF)
+		resumeGroup.POST("/upload-pdf", resumeHandler.UploadPDF)
 
 		// 需要认证的路由
 		auth := resumeGroup.Use(handler.AuthMiddleware(cfg.JWT.Secret))
 		{
 			// 新的两步上传流程
-			// auth.POST("/upload-pdf", resumeHandler.UploadPDF)
 			auth.POST("/create", resumeHandler.CreateResume)
 
 			// 兼容旧接口
@@ -154,6 +153,41 @@ func main() {
 			auth.PUT("/:id/file", resumeHandler.UpdateResumeFile)
 			auth.DELETE("/:id", resumeHandler.DeleteResume)
 			auth.GET("/user/list", resumeHandler.GetUserResumes)
+		}
+	}
+
+	// 添加对/v1路径的支持（不带/api前缀）
+	v1 := r.Group("/v1")
+
+	// 静态文件服务
+	v1.GET("/files/*path", resumeHandler.ServeResumeFile)
+
+	// 用户相关路由
+	v1.POST("/register", userHandler.Register)
+	v1.POST("/login", userHandler.Login)
+	v1.GET("/me", handler.AuthMiddleware(cfg.JWT.Secret), userHandler.GetMe)
+
+	// FAQ相关路由
+	v1.GET("/faqs", faqHandler.GetFAQs)
+
+	// 简历相关路由
+	v1ResumeGroup := v1.Group("/resumes")
+	{
+		// 公开路由
+		v1ResumeGroup.GET("", resumeHandler.GetResumes)
+		v1ResumeGroup.GET("/:id", resumeHandler.GetResume)
+		v1ResumeGroup.GET("/:id/download", resumeHandler.DownloadResume)
+		v1ResumeGroup.POST("/upload-pdf", resumeHandler.UploadPDF)
+
+		// 需要认证的路由
+		v1Auth := v1ResumeGroup.Use(handler.AuthMiddleware(cfg.JWT.Secret))
+		{
+			v1Auth.POST("/create", resumeHandler.CreateResume)
+			v1Auth.POST("", resumeHandler.UploadResume)
+			v1Auth.PUT("/:id", resumeHandler.UpdateResume)
+			v1Auth.PUT("/:id/file", resumeHandler.UpdateResumeFile)
+			v1Auth.DELETE("/:id", resumeHandler.DeleteResume)
+			v1Auth.GET("/user/list", resumeHandler.GetUserResumes)
 		}
 	}
 

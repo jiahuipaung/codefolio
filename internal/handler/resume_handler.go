@@ -135,15 +135,14 @@ func (h *ResumeHandler) convertToResumeResponse(resume *domain.Resume) ResumeRes
 // @Produce json
 // @Param file formData file true "简历文件(PDF)"
 // @Success 200 {object} common.Response{data=UploadPDFResponse}
-// @Failure 400,401,500 {object} common.Response
+// @Failure 400,500 {object} common.Response
 // @Router /api/v1/resumes/upload-pdf [post]
-// @Security BearerAuth
 func (h *ResumeHandler) UploadPDF(c *gin.Context) {
-	// 获取当前用户ID
+	// 获取当前用户ID，开发阶段允许匿名上传，默认用户ID为1
 	userID := getCurrentUserID(c)
 	if userID == 0 {
-		common.ResponseWithError(c, common.CodeUnauthorized, http.StatusUnauthorized)
-		return
+		// 开发阶段，使用默认用户ID
+		userID = 1
 	}
 
 	// 获取文件
