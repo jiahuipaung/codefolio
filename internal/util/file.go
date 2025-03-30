@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -70,7 +71,7 @@ type UploadFileResult struct {
 	FileSize int64
 }
 
-// ConvertPDFToImage 将PDF文件转换为图片
+// ConvertPDFToImage 将PDF文件转换为长图片（所有页面）
 func ConvertPDFToImage(pdfPath string) (string, error) {
 	// 检查文件是否存在
 	if _, err := os.Stat(pdfPath); os.IsNotExist(err) {
@@ -86,77 +87,165 @@ func ConvertPDFToImage(pdfPath string) (string, error) {
 	outputImageBase := filepath.Join(dir, filename)
 	outputImagePath := fmt.Sprintf("%s.%s", outputImageBase, DefaultImageFormat)
 
-	// 首先尝试使用pdftoppm（通常在Linux和macOS上可用）
+	// 首先尝试直接使用ImageMagick一步完成转换
+	if _, err := exec.LookPath("convert"); err == nil {
+		cmd := exec.Command(
+			"convert",
+			"-density", fmt.Sprintf("%d", DefaultDPI), // 设置DPI
+			"-quality", fmt.Sprintf("%d", DefaultImageQuality), // 设置质量
+			"-append",       // 垂直拼接
+			pdfPath,         // 输入PDF文件
+			outputImagePath, // 输出文件
+		)
+
+		// 执行命令
+		if err := cmd.Run(); err != nil {
+			GetLogger().Warn("直接转换多页PDF失败，尝试分步转换", zap.Error(err))
+		} else {
+			// 成功完成转换
+			GetLogger().Info("多页PDF直接转换为长图成功", zap.String("输出", outputImagePath))
+			return outputImagePath, nil
+		}
+	}
+
+	// 如果直接转换失败，尝试分步执行：先分页转换，再拼接
+
+	// 临时目录，用于存放单页图片
+	tmpDir := filepath.Join(dir, fmt.Sprintf("%s_tmp", filename))
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+		GetLogger().Error("创建临时目录失败", zap.Error(err))
+		return "", err
+	}
+	defer os.RemoveAll(tmpDir) // 清理临时目录
+
+	// 1. 使用pdftoppm将PDF分页转换为图片
+	var pagePaths []string
+
 	if _, err := exec.LookPath("pdftoppm"); err == nil {
-		// pdftoppm命令，将PDF转换为JPG，只转换第一页
+		// 分页转换
+		pageFileBase := filepath.Join(tmpDir, "page")
 		cmd := exec.Command(
 			"pdftoppm",
 			"-jpeg",                             // 输出JPEG格式
 			"-r", fmt.Sprintf("%d", DefaultDPI), // 设置DPI
 			"-jpegopt", fmt.Sprintf("quality=%d", DefaultImageQuality), // 设置JPEG质量
-			"-f", "1", "-l", "1", // 只处理第一页 (from 1, to 1)
-			"-singlefile",   // 输出单个文件
-			pdfPath,         // 输入PDF文件
-			outputImageBase, // 输出基础名称
+			pdfPath,      // 输入PDF文件
+			pageFileBase, // 输出基础名称
 		)
 
-		// 执行命令
 		if err := cmd.Run(); err != nil {
-			GetLogger().Error("PDF转图片失败 (pdftoppm)", zap.Error(err), zap.String("pdf", pdfPath))
+			GetLogger().Error("分页转换PDF失败 (pdftoppm)", zap.Error(err))
 			return "", ErrConvertPDFFailed
 		}
 
-		return outputImagePath, nil
-	}
-
-	// 如果pdftoppm不可用，尝试使用ghostscript
-	if _, err := exec.LookPath("gs"); err == nil {
-		// ghostscript命令，将PDF转换为JPG，只转换第一页
-		cmd := exec.Command(
-			"gs",
-			"-sDEVICE=jpeg", // 设备类型为JPEG
-			fmt.Sprintf("-dJPEGQ=%d", DefaultImageQuality), // JPEG质量
-			fmt.Sprintf("-r%d", DefaultDPI),                // 设置DPI
-			"-dBATCH",                                      // 批处理模式
-			"-dNOPAUSE",                                    // 不暂停
-			"-dFirstPage=1",                                // 从第一页开始
-			"-dLastPage=1",                                 // 到第一页结束
-			fmt.Sprintf("-sOutputFile=%s", outputImagePath), // 输出文件
-			pdfPath, // 输入PDF文件
-		)
-
-		// 执行命令
-		if err := cmd.Run(); err != nil {
-			GetLogger().Error("PDF转图片失败 (ghostscript)", zap.Error(err), zap.String("pdf", pdfPath))
-			return "", ErrConvertPDFFailed
+		// 查找生成的图片文件
+		files, err := os.ReadDir(tmpDir)
+		if err != nil {
+			GetLogger().Error("读取临时目录失败", zap.Error(err))
+			return "", err
 		}
 
-		return outputImagePath, nil
+		for _, file := range files {
+			if file.IsDir() {
+				continue
+			}
+			pagePaths = append(pagePaths, filepath.Join(tmpDir, file.Name()))
+		}
+
+		// 按页码排序
+		sort.Strings(pagePaths)
+
+	} else if _, err := exec.LookPath("ghostscript"); err == nil {
+		// 如果pdftoppm不可用，尝试使用ghostscript
+		for i := 1; ; i++ {
+			pageFile := filepath.Join(tmpDir, fmt.Sprintf("page-%03d.jpg", i))
+			cmd := exec.Command(
+				"gs",
+				"-sDEVICE=jpeg",
+				fmt.Sprintf("-dJPEGQ=%d", DefaultImageQuality),
+				fmt.Sprintf("-r%d", DefaultDPI),
+				"-dBATCH",
+				"-dNOPAUSE",
+				fmt.Sprintf("-dFirstPage=%d", i),
+				fmt.Sprintf("-dLastPage=%d", i),
+				fmt.Sprintf("-sOutputFile=%s", pageFile),
+				pdfPath,
+			)
+
+			if err := cmd.Run(); err != nil {
+				// 假设返回错误表示已处理完所有页面
+				if i > 1 {
+					break
+				}
+				GetLogger().Error("分页转换PDF失败 (ghostscript)", zap.Error(err))
+				return "", ErrConvertPDFFailed
+			}
+
+			if _, err := os.Stat(pageFile); err == nil {
+				pagePaths = append(pagePaths, pageFile)
+			} else {
+				break // 没有更多页面
+			}
+		}
+	} else {
+		GetLogger().Error("未找到合适的PDF转图片工具")
+		return "", ErrCommandNotFound
 	}
 
-	// 都不可用，尝试使用convert命令（ImageMagick）
+	// 检查是否有页面生成
+	if len(pagePaths) == 0 {
+		GetLogger().Error("未能生成任何图片页面")
+		return "", ErrConvertPDFFailed
+	}
+
+	// 2. 使用ImageMagick的convert命令垂直拼接图片
 	if _, err := exec.LookPath("convert"); err == nil {
-		// ImageMagick命令，将PDF转换为JPG，只转换第一页
-		cmd := exec.Command(
-			"convert",
-			"-density", fmt.Sprintf("%d", DefaultDPI), // 设置DPI
+		args := []string{
+			"-append",                                          // 垂直拼接
 			"-quality", fmt.Sprintf("%d", DefaultImageQuality), // 设置质量
-			fmt.Sprintf("%s[0]", pdfPath), // 输入PDF文件，只处理第一页
-			outputImagePath,               // 输出文件
-		)
+		}
+		args = append(args, pagePaths...)    // 添加所有页面图片
+		args = append(args, outputImagePath) // 添加输出路径
 
-		// 执行命令
+		cmd := exec.Command("convert", args...)
+
 		if err := cmd.Run(); err != nil {
-			GetLogger().Error("PDF转图片失败 (ImageMagick)", zap.Error(err), zap.String("pdf", pdfPath))
+			GetLogger().Error("拼接图片失败", zap.Error(err))
 			return "", ErrConvertPDFFailed
+		}
+
+		GetLogger().Info("多页PDF转换为长图成功",
+			zap.String("输出", outputImagePath),
+			zap.Int("页数", len(pagePaths)))
+
+		return outputImagePath, nil
+	}
+
+	// 如果没有ImageMagick，但至少有一页图片，就使用第一页
+	if len(pagePaths) > 0 {
+		GetLogger().Warn("无法拼接图片，使用第一页作为结果", zap.String("页面", pagePaths[0]))
+		// 复制第一页到最终输出位置
+		srcFile, err := os.Open(pagePaths[0])
+		if err != nil {
+			return "", err
+		}
+		defer srcFile.Close()
+
+		dstFile, err := os.Create(outputImagePath)
+		if err != nil {
+			return "", err
+		}
+		defer dstFile.Close()
+
+		if _, err := io.Copy(dstFile, srcFile); err != nil {
+			return "", err
 		}
 
 		return outputImagePath, nil
 	}
 
-	// 所有工具都不可用
-	GetLogger().Error("未找到PDF转图片工具", zap.String("pdf", pdfPath))
-	return "", ErrCommandNotFound
+	// 如果所有方法都失败
+	return "", ErrConvertPDFFailed
 }
 
 // SaveUploadedPDF 保存上传的PDF并转换为图片
