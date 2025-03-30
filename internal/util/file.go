@@ -228,9 +228,17 @@ func SaveUploadedPDF(c *gin.Context, file *multipart.FileHeader, userID uint) (*
 	// 转换成功后删除临时PDF文件
 	_ = os.Remove(tempPDFPath)
 
+	// 记录文件路径
+	GetLogger().Info("图片生成成功",
+		zap.String("原PDF", tempPDFPath),
+		zap.String("转换图片", imagePath))
+
+	// 获取相对于项目根目录的相对路径
+	relPath := "/" + imagePath
+
 	// 返回结果
 	return &UploadFileResult{
-		FilePath: imagePath,
+		FilePath: relPath, // 保存相对路径，方便构建URL
 		FileName: file.Filename,
 		FileType: "image/" + DefaultImageFormat,
 		FileSize: file.Size,
@@ -317,17 +325,30 @@ func DeleteFile(filePath string) error {
 // GetFileURL 获取文件URL
 func GetFileURL(c *gin.Context, filePath string) string {
 	// 将文件路径转换为URL
-	// 例如: uploads/resumes/1/2023_03/abc.pdf -> /api/v1/files/resumes/1/2023_03/abc.pdf
+	// 例如: uploads/resumes/1/2023_03/abc.jpg -> /api/v1/files/resumes/1/2023_03/abc.jpg
 	relativePath := strings.TrimPrefix(filePath, UploadDir)
 	relativePath = strings.TrimPrefix(relativePath, "/")
+
+	// 如果运行在Docker中，Host可能需要设置为外部访问地址
+	host := c.Request.Host
+
+	// 如果没有主机头，使用默认值
+	if host == "" {
+		host = "localhost:8080"
+	}
 
 	scheme := "http"
 	if c.Request.TLS != nil {
 		scheme = "https"
 	}
 
-	return fmt.Sprintf("%s://%s/api/v1/files/%s",
-		scheme,
-		c.Request.Host,
-		relativePath)
+	fileURL := fmt.Sprintf("%s://%s/api/v1/files/%s", scheme, host, relativePath)
+
+	// 记录URL转换过程（方便调试）
+	GetLogger().Debug("文件URL生成",
+		zap.String("filePath", filePath),
+		zap.String("relativePath", relativePath),
+		zap.String("fileURL", fileURL))
+
+	return fileURL
 }

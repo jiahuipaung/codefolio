@@ -5,11 +5,13 @@ import (
 	"codefolio/internal/repository"
 	"codefolio/internal/util"
 	"errors"
+	"fmt"
 	"mime/multipart"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // 简历相关错误
@@ -109,15 +111,33 @@ func (s *resumeService) UploadAndConvertPDF(c *gin.Context, userID uint, file *m
 	// 生成文件唯一标识
 	fileKey := uuid.New().String()
 
+	// 记录物理文件路径（用于调试）
+	filePath := uploadResult.FilePath
+
+	// 构建直接访问的URL路径
+	scheme := "http"
+	if c.Request.TLS != nil {
+		scheme = "https"
+	}
+
+	host := c.Request.Host
+	if host == "" {
+		host = "localhost:8080"
+	}
+
+	// 使用新增的直接静态文件访问路径
+	imageURL := fmt.Sprintf("%s://%s%s", scheme, host, filePath)
+
+	util.GetLogger().Info("PDF转图片成功",
+		zap.String("filePath", filePath),
+		zap.String("imageURL", imageURL))
+
 	// 存入临时文件缓存
 	tempFiles[fileKey] = TempFileInfo{
 		UserID:    userID,
 		FilePath:  uploadResult.FilePath,
 		CreatedAt: time.Now(),
 	}
-
-	// 获取图片的URL
-	imageURL := util.GetFileURL(c, uploadResult.FilePath)
 
 	// 返回结果包含图片URL和文件标识
 	return &FileResult{

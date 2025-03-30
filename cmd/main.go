@@ -121,7 +121,10 @@ func main() {
 	// 创建API分组
 	api := r.Group("/api/v1")
 
-	// 静态文件服务
+	// 静态文件服务 - 使用原生方式添加静态文件支持
+	r.StaticFS("/uploads", http.Dir(util.UploadDir))
+
+	// 原有的文件服务路由保留
 	api.GET("/files/*path", resumeHandler.ServeResumeFile)
 
 	// 用户相关路由

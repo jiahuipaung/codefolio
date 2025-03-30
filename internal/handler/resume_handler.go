@@ -6,7 +6,10 @@ import (
 	"codefolio/internal/service"
 	"codefolio/internal/util"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -647,11 +650,11 @@ func (h *ResumeHandler) DownloadResume(c *gin.Context) {
 
 // ServeResumeFile 提供简历文件服务
 // @Summary 提供简历文件服务
-// @Description 静态文件服务，提供简历文件访问
+// @Description 静态文件服务，提供简历文件和图片访问
 // @Tags 文件
 // @Produce octet-stream
 // @Param path path string true "文件路径"
-// @Success 200 {file} file "简历文件"
+// @Success 200 {file} file "文件内容"
 // @Router /api/v1/files/{path} [get]
 func (h *ResumeHandler) ServeResumeFile(c *gin.Context) {
 	filePath := c.Param("path")
@@ -661,7 +664,25 @@ func (h *ResumeHandler) ServeResumeFile(c *gin.Context) {
 	}
 
 	// 构建完整路径
-	fullPath := util.UploadDir + "/" + filePath
+	fullPath := filepath.Join(util.UploadDir, filePath)
+
+	// 检查文件是否存在
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		util.GetLogger().Error("文件不存在", zap.String("path", fullPath))
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	// 设置正确的Content-Type
+	extension := filepath.Ext(fullPath)
+	switch strings.ToLower(extension) {
+	case ".jpg", ".jpeg":
+		c.Header("Content-Type", "image/jpeg")
+	case ".png":
+		c.Header("Content-Type", "image/png")
+	case ".pdf":
+		c.Header("Content-Type", "application/pdf")
+	}
 
 	// 提供文件
 	c.File(fullPath)
