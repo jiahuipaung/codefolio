@@ -11,7 +11,7 @@ type ResumeRepository interface {
 	Create(resume *domain.Resume) error
 	FindByID(id uint) (*domain.Resume, error)
 	FindByUser(userID uint) ([]domain.Resume, error)
-	FindAll(page, size int, role, level, university string) ([]domain.Resume, int64, error)
+	FindAll(page, size int, role, level, university int) ([]domain.Resume, int64, error)
 	Update(resume *domain.Resume) error
 	Delete(id uint) error
 	IncrementViewCount(id uint) error
@@ -55,7 +55,7 @@ func (r *resumeRepository) FindByUser(userID uint) ([]domain.Resume, error) {
 }
 
 // FindAll 查询所有简历，支持分页和筛选
-func (r *resumeRepository) FindAll(page, size int, role, level, university string) ([]domain.Resume, int64, error) {
+func (r *resumeRepository) FindAll(page, size int, role, level, university int) ([]domain.Resume, int64, error) {
 	var resumes []domain.Resume
 	var total int64
 
@@ -65,18 +65,18 @@ func (r *resumeRepository) FindAll(page, size int, role, level, university strin
 	query := r.db.Model(&domain.Resume{})
 
 	// 职位筛选
-	if role != "" {
-		query = query.Where("role LIKE ?", "%"+role+"%")
+	if role > 0 {
+		query = query.Where("role = ?", role)
 	}
 
 	// 经历等级筛选
-	if level != "" {
-		query = query.Where("level LIKE ?", "%"+level+"%")
+	if level > 0 {
+		query = query.Where("level = ?", level)
 	}
 
 	// 毕业院校筛选
-	if university != "" {
-		query = query.Where("university LIKE ?", "%"+university+"%")
+	if university > 0 {
+		query = query.Where("university = ?", university)
 	}
 
 	// 计算总数

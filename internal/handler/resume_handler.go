@@ -40,40 +40,40 @@ type UploadPDFResponse struct {
 
 // CreateResumeRequest 创建简历请求
 type CreateResumeRequest struct {
-	FileKey     string   `json:"file_key" binding:"required"`   // 上传PDF时返回的文件标识
-	Role        string   `json:"role" binding:"required"`       // 应聘职位
-	Level       string   `json:"level" binding:"required"`      // 经历等级
-	University  string   `json:"university" binding:"required"` // 毕业院校
-	PassCompany []string `json:"pass_company"`                  // 面试通过的公司
+	FileKey     string `json:"file_key" binding:"required"`   // 上传PDF时返回的文件标识
+	Role        int    `json:"role" binding:"required"`       // 应聘职位
+	Level       int    `json:"level" binding:"required"`      // 经历等级
+	University  int    `json:"university" binding:"required"` // 毕业院校
+	PassCompany []int  `json:"pass_company"`                  // 面试通过的公司
 }
 
 // UploadResumeRequest 上传简历请求（兼容旧接口）
 type UploadResumeRequest struct {
-	Role        string   `form:"role" binding:"required"`       // 应聘职位
-	Level       string   `form:"level" binding:"required"`      // 经历等级
-	University  string   `form:"university" binding:"required"` // 毕业院校
-	PassCompany []string `form:"pass_company[]"`                // 面试通过的公司
+	Role        int   `form:"role" binding:"required"`       // 应聘职位
+	Level       int   `form:"level" binding:"required"`      // 经历等级
+	University  int   `form:"university" binding:"required"` // 毕业院校
+	PassCompany []int `form:"pass_company[]"`                // 面试通过的公司
 }
 
 // UpdateResumeRequest 更新简历请求
 type UpdateResumeRequest struct {
-	Role        string   `json:"role"`
-	Level       string   `json:"level"`
-	University  string   `json:"university"`
-	PassCompany []string `json:"pass_company"`
+	Role        int   `json:"role"`
+	Level       int   `json:"level"`
+	University  int   `json:"university"`
+	PassCompany []int `json:"pass_company"`
 }
 
 // ResumeResponse 简历响应
 type ResumeResponse struct {
-	ID          uint     `json:"id"`
-	UserID      uint     `json:"user_id"`
-	ImageURL    string   `json:"image_url"`
-	Role        string   `json:"role"`
-	Level       string   `json:"level"`
-	University  string   `json:"university"`
-	PassCompany []string `json:"pass_company"`
-	CreatedAt   string   `json:"created_at"`
-	UpdatedAt   string   `json:"updated_at"`
+	ID          uint   `json:"id"`
+	UserID      uint   `json:"user_id"`
+	ImageURL    string `json:"image_url"`
+	Role        int    `json:"role"`
+	Level       int    `json:"level"`
+	University  int    `json:"university"`
+	PassCompany []int  `json:"pass_company"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 // GetPagingParams 获取分页参数
@@ -357,9 +357,9 @@ func (h *ResumeHandler) GetResume(c *gin.Context) {
 // @Produce json
 // @Param page query int false "页码，默认1"
 // @Param size query int false "每页数量，默认10"
-// @Param role query string false "按职位筛选"
-// @Param level query string false "按经历等级筛选"
-// @Param university query string false "按毕业院校筛选"
+// @Param role query int false "按职位筛选"
+// @Param level query int false "按经历等级筛选"
+// @Param university query int false "按毕业院校筛选"
 // @Success 200 {object} common.Response{data=[]ResumeResponse}
 // @Failure 400,500 {object} common.Response
 // @Router /api/v1/resumes [get]
@@ -367,10 +367,14 @@ func (h *ResumeHandler) GetResumes(c *gin.Context) {
 	// 获取分页参数
 	page, size := GetPagingParams(c)
 
-	// 获取筛选参数
-	role := c.DefaultQuery("role", "")
-	level := c.DefaultQuery("level", "")
-	university := c.DefaultQuery("university", "")
+	// 获取筛选参数，修改为整数类型
+	roleStr := c.DefaultQuery("role", "0")
+	levelStr := c.DefaultQuery("level", "0")
+	universityStr := c.DefaultQuery("university", "0")
+
+	role, _ := strconv.Atoi(roleStr)
+	level, _ := strconv.Atoi(levelStr)
+	university, _ := strconv.Atoi(universityStr)
 
 	// 获取当前用户ID
 	userID := getCurrentUserID(c)

@@ -41,17 +41,17 @@ var tempFiles = make(map[string]TempFileInfo)
 // ResumeService 简历服务接口
 type ResumeService interface {
 	// 简历基本操作
-	CreateResume(c *gin.Context, userID uint, file *multipart.FileHeader, role, level, university string, passCompany []string) (*domain.Resume, error)
+	CreateResume(c *gin.Context, userID uint, file *multipart.FileHeader, role, level, university int, passCompany []int) (*domain.Resume, error)
 	GetResumeByID(c *gin.Context, id uint, currentUserID uint) (*domain.Resume, error)
 	GetUserResumes(userID uint) ([]domain.Resume, error)
-	GetAllResumes(page, size int, role, level, university string, currentUserID uint) ([]domain.Resume, int64, error)
-	UpdateResume(resumeID, userID uint, role, level, university string, passCompany []string) (*domain.Resume, error)
+	GetAllResumes(page, size int, role, level, university int, currentUserID uint) ([]domain.Resume, int64, error)
+	UpdateResume(resumeID, userID uint, role, level, university int, passCompany []int) (*domain.Resume, error)
 	UpdateResumeFile(c *gin.Context, resumeID, userID uint, file *multipart.FileHeader) (*domain.Resume, error)
 	DeleteResume(resumeID, userID uint) error
 
 	// 文件相关
 	UploadAndConvertPDF(c *gin.Context, userID uint, file *multipart.FileHeader) (*FileResult, error)
-	CreateResumeWithFileKey(userID uint, fileKey, role, level, university string, passCompany []string) (*domain.Resume, error)
+	CreateResumeWithFileKey(userID uint, fileKey string, role, level, university int, passCompany []int) (*domain.Resume, error)
 	GetResumeFileURL(c *gin.Context, resume *domain.Resume) string
 	DownloadResume(c *gin.Context, resumeID, userID uint) (*domain.Resume, error)
 
@@ -147,7 +147,7 @@ func (s *resumeService) UploadAndConvertPDF(c *gin.Context, userID uint, file *m
 }
 
 // CreateResumeWithFileKey 使用文件标识创建简历（第二步）
-func (s *resumeService) CreateResumeWithFileKey(userID uint, fileKey, role, level, university string, passCompany []string) (*domain.Resume, error) {
+func (s *resumeService) CreateResumeWithFileKey(userID uint, fileKey string, role, level, university int, passCompany []int) (*domain.Resume, error) {
 	// 获取临时文件信息
 	fileInfo, exists := tempFiles[fileKey]
 	if !exists {
@@ -182,7 +182,7 @@ func (s *resumeService) CreateResumeWithFileKey(userID uint, fileKey, role, leve
 }
 
 // CreateResume 创建简历（一次性操作，保留兼容性）
-func (s *resumeService) CreateResume(c *gin.Context, userID uint, file *multipart.FileHeader, role, level, university string, passCompany []string) (*domain.Resume, error) {
+func (s *resumeService) CreateResume(c *gin.Context, userID uint, file *multipart.FileHeader, role, level, university int, passCompany []int) (*domain.Resume, error) {
 	// 保存文件并转换为图片
 	fileResult, err := util.SaveUploadedFile(c, file, userID)
 	if err != nil {
@@ -237,7 +237,7 @@ func (s *resumeService) GetUserResumes(userID uint) ([]domain.Resume, error) {
 }
 
 // GetAllResumes 获取所有简历（分页）
-func (s *resumeService) GetAllResumes(page, size int, role, level, university string, currentUserID uint) ([]domain.Resume, int64, error) {
+func (s *resumeService) GetAllResumes(page, size int, role, level, university int, currentUserID uint) ([]domain.Resume, int64, error) {
 	// 检查访问权限
 	if !s.CanViewResume(currentUserID) {
 		return nil, 0, ErrViewLimitExceeded
@@ -247,7 +247,7 @@ func (s *resumeService) GetAllResumes(page, size int, role, level, university st
 }
 
 // UpdateResume 更新简历信息（不包括文件）
-func (s *resumeService) UpdateResume(resumeID, userID uint, role, level, university string, passCompany []string) (*domain.Resume, error) {
+func (s *resumeService) UpdateResume(resumeID, userID uint, role, level, university int, passCompany []int) (*domain.Resume, error) {
 	// 获取简历
 	resume, err := s.resumeRepo.FindByID(resumeID)
 	if err != nil || resume == nil {
