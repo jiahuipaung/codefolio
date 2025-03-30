@@ -32,6 +32,9 @@ FROM alpine:latest
 # 安装必要的运行时依赖
 RUN apk --no-cache add ca-certificates tzdata
 
+# 安装PDF转图片工具（poppler-utils包含pdftoppm）
+RUN apk --no-cache add poppler-utils imagemagick ghostscript
+
 # 设置时区
 ENV TZ=Asia/Shanghai
 

@@ -161,6 +161,12 @@ func (h *ResumeHandler) UploadPDF(c *gin.Context) {
 			common.ResponseWithError(c, common.CodeInvalidParams)
 		case util.ErrInvalidFileType:
 			common.ResponseWithError(c, common.CodeInvalidParams)
+		case util.ErrCommandNotFound:
+			common.ResponseWithError(c, common.CodeInternalError, http.StatusInternalServerError)
+			util.GetLogger().Error("PDF转图片工具不可用", zap.Error(err))
+		case util.ErrConvertPDFFailed:
+			common.ResponseWithError(c, common.CodeInternalError, http.StatusInternalServerError)
+			util.GetLogger().Error("PDF转图片失败", zap.Error(err))
 		default:
 			util.GetLogger().Error("上传PDF失败", zap.Error(err))
 			common.ResponseWithError(c, common.CodeInternalError, http.StatusInternalServerError)
@@ -168,7 +174,7 @@ func (h *ResumeHandler) UploadPDF(c *gin.Context) {
 		return
 	}
 
-	// 构建响应
+	// 构建响应 - fileResult.FilePath 现在已经是完整的URL
 	resp := UploadPDFResponse{
 		ImageURL: fileResult.FilePath,
 		FileKey:  fileResult.FileKey,

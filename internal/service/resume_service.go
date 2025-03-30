@@ -98,10 +98,10 @@ func cleanupTempFiles() {
 	}
 }
 
-// UploadAndConvertPDF 上传并转换PDF文件（第一步）
+// UploadAndConvertPDF 上传并转换PDF文件为图片（第一步）
 func (s *resumeService) UploadAndConvertPDF(c *gin.Context, userID uint, file *multipart.FileHeader) (*FileResult, error) {
-	// 上传并转换文件
-	uploadResult, err := util.SaveUploadedFile(c, file, userID)
+	// 上传并转换PDF为图片
+	uploadResult, err := util.SaveUploadedPDF(c, file, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -116,8 +116,12 @@ func (s *resumeService) UploadAndConvertPDF(c *gin.Context, userID uint, file *m
 		CreatedAt: time.Now(),
 	}
 
+	// 获取图片的URL
+	imageURL := util.GetFileURL(c, uploadResult.FilePath)
+
+	// 返回结果包含图片URL和文件标识
 	return &FileResult{
-		FilePath: uploadResult.FilePath,
+		FilePath: imageURL, // 返回完整的URL，而不是文件路径
 		FileKey:  fileKey,
 	}, nil
 }
