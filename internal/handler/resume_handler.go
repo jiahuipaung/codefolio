@@ -196,13 +196,12 @@ func (h *ResumeHandler) UploadPDF(c *gin.Context) {
 // @Success 200 {object} common.Response{data=ResumeResponse}
 // @Failure 400,401,500 {object} common.Response
 // @Router /api/v1/resumes/create [post]
-// @Security BearerAuth
 func (h *ResumeHandler) CreateResume(c *gin.Context) {
-	// 获取当前用户ID
+	// 获取当前用户ID，开发阶段允许匿名创建，默认用户ID为1
 	userID := getCurrentUserID(c)
 	if userID == 0 {
-		common.ResponseWithError(c, common.CodeUnauthorized, http.StatusUnauthorized)
-		return
+		// 开发阶段，使用默认用户ID
+		userID = 1
 	}
 
 	// 绑定参数

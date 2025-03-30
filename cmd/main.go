@@ -90,6 +90,7 @@ func main() {
 	err = db.AutoMigrate(
 		&domain.User{},
 		&domain.Resume{},
+		&domain.University{},
 	)
 	if err != nil {
 		logger.Fatal("数据库迁移失败", zap.Error(err))
@@ -100,9 +101,13 @@ func main() {
 		logger.Fatal("创建上传目录失败", zap.Error(err))
 	}
 
+	// 初始化种子数据
+	util.SeedUniversities(db)
+
 	// 创建仓库
 	userRepo := repository.NewUserRepository(db)
 	resumeRepo := repository.NewResumeRepository(db)
+	universityRepo := repository.NewUniversityRepository(db)
 
 	// 创建服务
 	userService := service.NewUserService(userRepo, cfg.JWT.Secret, cfg.JWT.ExpireHours)
@@ -112,11 +117,13 @@ func main() {
 		cfg.Upload.AnonymousView,
 		cfg.Upload.UserView,
 	)
+	universityService := service.NewUniversityService(universityRepo)
 
 	// 创建处理器
 	userHandler := handler.NewUserHandler(userService)
 	faqHandler := handler.NewFAQHandler()
 	resumeHandler := handler.NewResumeHandler(resumeService)
+	universityHandler := handler.NewUniversityHandler(universityService)
 
 	// 创建API分组
 	api := r.Group("/api/v1")
@@ -135,6 +142,9 @@ func main() {
 	// FAQ相关路由
 	api.GET("/faqs", faqHandler.GetFAQs)
 
+	// 大学相关路由
+	api.GET("/universities", universityHandler.GetUniversities)
+
 	// 简历相关路由
 	resumeGroup := api.Group("/resumes")
 	{
@@ -143,12 +153,14 @@ func main() {
 		resumeGroup.GET("/:id", resumeHandler.GetResume)
 		resumeGroup.GET("/:id/download", resumeHandler.DownloadResume)
 		resumeGroup.POST("/upload-pdf", resumeHandler.UploadPDF)
+		resumeGroup.POST("/create", resumeHandler.CreateResume)
 
 		// 需要认证的路由
 		auth := resumeGroup.Use(handler.AuthMiddleware(cfg.JWT.Secret))
 		{
 			// 新的两步上传流程
-			auth.POST("/create", resumeHandler.CreateResume)
+			// auth.POST("/upload-pdf", resumeHandler.UploadPDF)
+			// auth.POST("/create", resumeHandler.CreateResume)
 
 			// 兼容旧接口
 			auth.POST("", resumeHandler.UploadResume)
@@ -156,41 +168,6 @@ func main() {
 			auth.PUT("/:id/file", resumeHandler.UpdateResumeFile)
 			auth.DELETE("/:id", resumeHandler.DeleteResume)
 			auth.GET("/user/list", resumeHandler.GetUserResumes)
-		}
-	}
-
-	// 添加对/v1路径的支持（不带/api前缀）
-	v1 := r.Group("/v1")
-
-	// 静态文件服务
-	v1.GET("/files/*path", resumeHandler.ServeResumeFile)
-
-	// 用户相关路由
-	v1.POST("/register", userHandler.Register)
-	v1.POST("/login", userHandler.Login)
-	v1.GET("/me", handler.AuthMiddleware(cfg.JWT.Secret), userHandler.GetMe)
-
-	// FAQ相关路由
-	v1.GET("/faqs", faqHandler.GetFAQs)
-
-	// 简历相关路由
-	v1ResumeGroup := v1.Group("/resumes")
-	{
-		// 公开路由
-		v1ResumeGroup.GET("", resumeHandler.GetResumes)
-		v1ResumeGroup.GET("/:id", resumeHandler.GetResume)
-		v1ResumeGroup.GET("/:id/download", resumeHandler.DownloadResume)
-		v1ResumeGroup.POST("/upload-pdf", resumeHandler.UploadPDF)
-
-		// 需要认证的路由
-		v1Auth := v1ResumeGroup.Use(handler.AuthMiddleware(cfg.JWT.Secret))
-		{
-			v1Auth.POST("/create", resumeHandler.CreateResume)
-			v1Auth.POST("", resumeHandler.UploadResume)
-			v1Auth.PUT("/:id", resumeHandler.UpdateResume)
-			v1Auth.PUT("/:id/file", resumeHandler.UpdateResumeFile)
-			v1Auth.DELETE("/:id", resumeHandler.DeleteResume)
-			v1Auth.GET("/user/list", resumeHandler.GetUserResumes)
 		}
 	}
 
