@@ -25,7 +25,12 @@ import (
 func main() {
 	// 初始化日志
 	logger := util.InitLogger()
-	defer logger.Sync()
+	defer func(logger *zap.Logger) {
+		err := logger.Sync()
+		if err != nil {
+
+		}
+	}(logger)
 
 	// 加载配置
 	cfg := config.LoadConfig()
